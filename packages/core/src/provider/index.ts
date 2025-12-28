@@ -11,6 +11,7 @@ export type {
   TokenBudget,
   KernelRenderer,
   CTNProvider,
+  RequestSnapshot,
 } from './types.js';
 
 export { BaseCTNProvider } from './base.js';

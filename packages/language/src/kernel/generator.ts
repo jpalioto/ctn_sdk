@@ -7,9 +7,9 @@ import type {
   ModifiedClause,
 } from '../schemas/index.js';
 import {
-  KERNEL_THRESHOLD,
   getClauseIntensity,
   getClausePolarity,
+  DEFAULT_THRESHOLDS,
 } from '../schemas/index.js';
 
 /**
@@ -68,8 +68,11 @@ export function generateKernelIR(
 
     const absValue = Math.abs(value);
 
+    // Use strategy's kernel threshold or default
+    const kernelThreshold = strategy.thresholds?.kernel ?? DEFAULT_THRESHOLDS.kernel;
+
     // Skip traits below threshold
-    if (absValue < KERNEL_THRESHOLD) {
+    if (absValue < kernelThreshold) {
       omittedTraits.push(dim.id);
       continue;
     }

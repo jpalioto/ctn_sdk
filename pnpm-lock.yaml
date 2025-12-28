@@ -67,6 +67,9 @@ importers:
       '@types/semver':
         specifier: ^7.5.8
         version: 7.7.1
+      fast-check:
+        specifier: ^4.5.2
+        version: 4.5.2
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -79,6 +82,10 @@ importers:
       zod:
         specifier: ^4.2.1
         version: 4.2.1
+    devDependencies:
+      fast-check:
+        specifier: ^4.5.2
+        version: 4.5.2
 
 packages:
 
@@ -314,6 +321,10 @@ packages:
     resolution: {integrity: sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==}
     engines: {node: '>=6'}
 
+  fast-check@4.5.2:
+    resolution: {integrity: sha512-tOzL01LMrDIWPLfvMiGUMH0AjqnOelHQPmgvYkW/aRO4Yaw+pBQqWmyebNzAEbKOigoCN8HkRWUZXFkjmiaXMQ==}
+    engines: {node: '>=12.17.0'}
+
   form-data-encoder@1.7.2:
     resolution: {integrity: sha512-qfqtYan3rxrnCk1VYaA4H+Ms9xdpPqvLZa6xmMgFvhO32x7/3J/ExcTd6qpxM0vH2GdMI+poehyBZvqfMTto8A==}
 
@@ -400,6 +411,9 @@ packages:
     peerDependenciesMeta:
       encoding:
         optional: true
+
+  pure-rand@7.0.1:
+    resolution: {integrity: sha512-oTUZM/NAZS8p7ANR3SHh30kXB+zK2r2BPcEn/awJIbOvq82WoMN4p62AWWp3Hhw50G0xMsw1mhIBLqHw64EcNQ==}
 
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
@@ -632,6 +646,10 @@ snapshots:
 
   event-target-shim@5.0.1: {}
 
+  fast-check@4.5.2:
+    dependencies:
+      pure-rand: 7.0.1
+
   form-data-encoder@1.7.2: {}
 
   form-data@4.0.5:
@@ -711,6 +729,8 @@ snapshots:
   node-fetch@2.7.0:
     dependencies:
       whatwg-url: 5.0.0
+
+  pure-rand@7.0.1: {}
 
   resolve-pkg-maps@1.0.0: {}
 

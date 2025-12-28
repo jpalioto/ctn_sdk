@@ -22,4 +22,5 @@ export {
 export {
   OperationalStrategy,
   operationalStrategy,
+  type OperationalStrategyConfig,
 } from './operational.js';

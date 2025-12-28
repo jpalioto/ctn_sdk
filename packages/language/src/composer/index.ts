@@ -10,6 +10,7 @@ export {
 export {
   resolveInteractions,
   getModifiedTraitPairs,
+  type ResolveInteractionsOptions,
 } from './interactions.js';
 
 // Composer

@@ -7,10 +7,12 @@ import type {
   ConstraintDefinition,
   Features,
   TraitInteraction,
+  StrategyThresholds,
 } from '../schemas/index.js';
 import {
   UnknownConstraintError,
   InvalidConstraintParamError,
+  DEFAULT_THRESHOLDS,
 } from '../schemas/index.js';
 import {
   OPERATIONAL_DIMENSIONS,
@@ -19,6 +21,14 @@ import {
 } from './dimensions.js';
 import { OPERATIONAL_CONSTRAINTS, buildConstraintMap } from './constraints.js';
 import { OPERATIONAL_INTERACTIONS } from './interactions.js';
+
+/**
+ * Configuration options for OperationalStrategy.
+ */
+export interface OperationalStrategyConfig {
+  /** Custom thresholds for kernel generation and interactions */
+  readonly thresholds?: Partial<StrategyThresholds>;
+}
 
 /**
  * The Operational strategy for general-purpose behavioral control.
@@ -37,13 +47,18 @@ export class OperationalStrategy implements TraitStrategy {
   readonly version = '1.0.0';
   readonly dimensions: readonly TraitDimension[] = OPERATIONAL_DIMENSIONS;
   readonly interactions: readonly TraitInteraction[] = OPERATIONAL_INTERACTIONS;
+  readonly thresholds: StrategyThresholds;
 
   private readonly constraintMap: Map<string, ConstraintDefinition>;
   private readonly identityVector: TraitVector;
 
-  constructor() {
+  constructor(config?: OperationalStrategyConfig) {
     this.constraintMap = buildConstraintMap(OPERATIONAL_CONSTRAINTS);
     this.identityVector = Object.freeze(new Array(OPERATIONAL_DIMENSION_COUNT).fill(0));
+    this.thresholds = Object.freeze({
+      kernel: config?.thresholds?.kernel ?? DEFAULT_THRESHOLDS.kernel,
+      interaction: config?.thresholds?.interaction ?? DEFAULT_THRESHOLDS.interaction,
+    });
   }
 
   /**

@@ -4,7 +4,15 @@ import type {
   TraitInteraction,
   InteractionResult,
 } from '../schemas/index.js';
-import { INTERACTION_THRESHOLD, magnitude } from '../schemas/index.js';
+import { DEFAULT_THRESHOLDS, magnitude } from '../schemas/index.js';
+
+/**
+ * Options for interaction resolution.
+ */
+export interface ResolveInteractionsOptions {
+  /** Custom interaction threshold (default: 0.5) */
+  readonly interactionThreshold?: number;
+}
 
 /**
  * Resolves trait interactions after composition.
@@ -23,8 +31,10 @@ import { INTERACTION_THRESHOLD, magnitude } from '../schemas/index.js';
  */
 export function resolveInteractions(
   traits: TraitVector,
-  interactions: readonly TraitInteraction[]
+  interactions: readonly TraitInteraction[],
+  options?: ResolveInteractionsOptions
 ): InteractionResult {
+  const threshold = options?.interactionThreshold ?? DEFAULT_THRESHOLDS.interaction;
   const result: MutableTraitVector = [...traits];
   const applied: string[] = [];
   const appliedDetails: TraitInteraction[] = [];
@@ -40,7 +50,7 @@ export function resolveInteractions(
     }
 
     // Check if condition is met
-    if (conditionMet(result, interaction)) {
+    if (conditionMet(result, interaction, threshold)) {
       applyResolution(result, interaction);
       applied.push(interaction.id);
       appliedDetails.push(interaction);
@@ -71,13 +81,14 @@ export function resolveInteractions(
  * Condition thresholds (from spec 4.5.3):
  * | Condition   | Definition                              |
  * |-------------|-----------------------------------------|
- * | both_high   | Both traits have value > 0.5            |
- * | both_low    | Both traits have value < -0.5           |
- * | opposing    | One trait > 0.5 and other < -0.5        |
+ * | both_high   | Both traits have value > threshold      |
+ * | both_low    | Both traits have value < -threshold     |
+ * | opposing    | One trait > threshold and other < -threshold |
  */
 function conditionMet(
   traits: readonly number[],
-  interaction: TraitInteraction
+  interaction: TraitInteraction,
+  threshold: number
 ): boolean {
   const [i, j] = interaction.traitIndices;
   const vi = traits[i];
@@ -89,15 +100,15 @@ function conditionMet(
 
   switch (interaction.condition) {
     case 'both_high':
-      return vi > INTERACTION_THRESHOLD && vj > INTERACTION_THRESHOLD;
+      return vi > threshold && vj > threshold;
 
     case 'both_low':
-      return vi < -INTERACTION_THRESHOLD && vj < -INTERACTION_THRESHOLD;
+      return vi < -threshold && vj < -threshold;
 
     case 'opposing':
       return (
-        (vi > INTERACTION_THRESHOLD && vj < -INTERACTION_THRESHOLD) ||
-        (vi < -INTERACTION_THRESHOLD && vj > INTERACTION_THRESHOLD)
+        (vi > threshold && vj < -threshold) ||
+        (vi < -threshold && vj > threshold)
       );
 
     default:

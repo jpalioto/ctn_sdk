@@ -27,9 +27,12 @@ export {
 export {
   ConstraintParamsSchema,
   StrategyMetadataSchema,
+  StrategyThresholdsSchema,
   type ConstraintParams,
   type StrategyMetadata,
+  type StrategyThresholds,
   type TraitStrategy,
+  DEFAULT_THRESHOLDS,
   getStrategyMetadata,
   parseStrategyMetadata,
 } from './strategy.schema.js';
@@ -127,6 +130,17 @@ export {
   isParsedConstraint,
   isResolvedConstraint,
 } from './constraint.schema.js';
+
+// ============================================================================
+// Security schemas and types
+// ============================================================================
+export {
+  TrustModeSchema,
+  type TrustMode,
+  type SecurityOptions,
+  DEFAULT_CONSTRAINT_BOUNDARY,
+  toParserOptions,
+} from './security.schema.js';
 
 // ============================================================================
 // Error types

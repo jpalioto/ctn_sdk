@@ -87,7 +87,8 @@ export class Composer<S extends TraitStrategy = TraitStrategy> {
     // Step 3: Resolve trait interactions
     const interactionResult = resolveInteractions(
       saturationResult.traits,
-      interactions
+      interactions,
+      { interactionThreshold: this.strategy.thresholds?.interaction }
     );
 
     // Step 4: Lattice join for features
@@ -133,7 +134,8 @@ export class Composer<S extends TraitStrategy = TraitStrategy> {
     const saturationResult = saturateWithInfo(rawSum);
     const interactionResult = resolveInteractions(
       saturationResult.traits,
-      interactions
+      interactions,
+      { interactionThreshold: this.strategy.thresholds?.interaction }
     );
     const features = this.joinAllFeatures(constraints);
     const kernelIR = generateKernelIR(

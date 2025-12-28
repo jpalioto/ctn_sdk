@@ -131,6 +131,29 @@ export interface KernelRenderer {
 }
 
 /**
+ * Snapshot of a request for debugging and audit.
+ *
+ * Captures the complete state of a request before it's sent to the provider.
+ * Useful for logging, debugging, and compliance.
+ */
+export interface RequestSnapshot {
+  /** Timestamp of the request */
+  readonly timestamp: Date;
+  /** Model being used */
+  readonly model: string;
+  /** Projected configuration */
+  readonly config: ProjectedConfig;
+  /** Token budget calculation */
+  readonly tokenBudget: TokenBudget;
+  /** Messages being sent */
+  readonly messages: readonly Message[];
+  /** Final system prompt (kernel + prefix) */
+  readonly systemPrompt: string;
+  /** Final API parameters after all overrides */
+  readonly finalParams: Record<string, unknown>;
+}
+
+/**
  * CTN Provider interface.
  *
  * Providers are responsible for:

@@ -28,5 +28,8 @@
   "license": "MIT",
   "dependencies": {
     "zod": "^4.2.1"
+  },
+  "devDependencies": {
+    "fast-check": "^4.5.2"
   }
 }

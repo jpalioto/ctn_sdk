@@ -16,6 +16,24 @@ export const ConstraintParamsSchema = z.record(z.string(), z.unknown()).readonly
 export type ConstraintParams = z.infer<typeof ConstraintParamsSchema>;
 
 /**
+ * Schema for strategy threshold configuration.
+ */
+export const StrategyThresholdsSchema = z.object({
+  /** Threshold for including a trait in kernel clauses. Default: 0.3 */
+  kernel: z.number().min(0).max(1).default(0.3),
+  /** Threshold for trait interaction conditions. Default: 0.5 */
+  interaction: z.number().min(0).max(1).default(0.5),
+}).readonly();
+
+export type StrategyThresholds = z.infer<typeof StrategyThresholdsSchema>;
+
+/** Default threshold values */
+export const DEFAULT_THRESHOLDS: StrategyThresholds = Object.freeze({
+  kernel: 0.3,
+  interaction: 0.5,
+});
+
+/**
  * Schema for strategy metadata (serializable portion).
  */
 export const StrategyMetadataSchema = z.object({
@@ -23,6 +41,7 @@ export const StrategyMetadataSchema = z.object({
   version: z.string(),
   dimensionCount: z.number().int().positive(),
   dimensionIds: z.array(z.string()).readonly(),
+  thresholds: StrategyThresholdsSchema.optional(),
 }).readonly();
 
 export type StrategyMetadata = z.infer<typeof StrategyMetadataSchema>;
@@ -37,6 +56,8 @@ export interface TraitStrategy {
   readonly name: string;
   readonly version: string;
   readonly dimensions: readonly TraitDimension[];
+  /** Configurable thresholds for kernel generation and interactions */
+  readonly thresholds: StrategyThresholds;
 
   identity(): TraitVector;
   add(a: TraitVector, b: TraitVector): TraitVector;
@@ -54,6 +75,7 @@ export function getStrategyMetadata(strategy: TraitStrategy): StrategyMetadata {
     version: strategy.version,
     dimensionCount: strategy.dimensions.length,
     dimensionIds: strategy.dimensions.map((d) => d.id),
+    thresholds: strategy.thresholds,
   };
 }
 
