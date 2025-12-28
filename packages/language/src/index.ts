@@ -9,3 +9,6 @@ export * from './composer/index.js';
 
 // Re-export kernel module
 export * from './kernel/index.js';
+
+// Re-export parser module
+export * from './parser/index.js';
