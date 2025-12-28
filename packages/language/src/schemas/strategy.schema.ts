@@ -8,10 +8,88 @@ import {
   type LabeledTraits,
 } from './trait.schema.js';
 
+// ============================================================================
+// SemVer Validation
+// ============================================================================
+
+/**
+ * Regex pattern for semantic versioning (SemVer 2.0).
+ * Matches: 1.0.0, 1.2.3-alpha, 1.0.0+build.123
+ */
+const SEMVER_REGEX = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
+
+/**
+ * Schema for semantic version strings.
+ */
+export const SemVerSchema = z.string().regex(SEMVER_REGEX, {
+  message: 'Invalid semantic version. Expected format: MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]',
+});
+
+export type SemVer = z.infer<typeof SemVerSchema>;
+
+/**
+ * Validates that a string is a valid SemVer.
+ */
+export function isValidSemVer(version: string): boolean {
+  return SEMVER_REGEX.test(version);
+}
+
+/**
+ * Parsed SemVer components.
+ */
+export interface ParsedSemVer {
+  readonly major: number;
+  readonly minor: number;
+  readonly patch: number;
+  readonly prerelease?: string;
+  readonly build?: string;
+}
+
+/**
+ * Parses a SemVer string and returns its components.
+ */
+export function parseSemVer(version: string): ParsedSemVer {
+  const parsed = SemVerSchema.parse(version);
+  const match = SEMVER_REGEX.exec(parsed);
+  if (!match) throw new Error(`Invalid SemVer: ${version}`);
+
+  const result: ParsedSemVer = {
+    major: parseInt(match[1]!, 10),
+    minor: parseInt(match[2]!, 10),
+    patch: parseInt(match[3]!, 10),
+  };
+
+  // Only add optional properties if they exist
+  if (match[4] !== undefined) {
+    return { ...result, prerelease: match[4] };
+  }
+  if (match[5] !== undefined) {
+    return { ...result, build: match[5] };
+  }
+
+  return result;
+}
+
+// ============================================================================
+// Constraint Parameters
+// ============================================================================
+
+/**
+ * Schema for individual constraint parameter values.
+ * Only allows safe primitive types.
+ */
+export const ConstraintParamValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+]);
+
+export type ConstraintParamValue = z.infer<typeof ConstraintParamValueSchema>;
+
 /**
  * Schema for constraint parameters.
  */
-export const ConstraintParamsSchema = z.record(z.string(), z.unknown()).readonly();
+export const ConstraintParamsSchema = z.record(z.string(), ConstraintParamValueSchema).readonly();
 
 export type ConstraintParams = z.infer<typeof ConstraintParamsSchema>;
 
@@ -38,13 +116,87 @@ export const DEFAULT_THRESHOLDS: StrategyThresholds = Object.freeze({
  */
 export const StrategyMetadataSchema = z.object({
   name: z.string(),
-  version: z.string(),
+  version: SemVerSchema,
   dimensionCount: z.number().int().positive(),
   dimensionIds: z.array(z.string()).readonly(),
   thresholds: StrategyThresholdsSchema.optional(),
 }).readonly();
 
 export type StrategyMetadata = z.infer<typeof StrategyMetadataSchema>;
+
+/**
+ * Schema for validating strategy configuration with full semantic checks.
+ *
+ * Validates:
+ * - SemVer format for version
+ * - Dimension index contiguity (indices must be 0, 1, 2, ... with no gaps)
+ * - Dimension count matches actual dimensions
+ */
+export const StrategyConfigSchema = z.object({
+  name: z.string().min(1, 'Strategy name cannot be empty'),
+  version: SemVerSchema,
+  dimensions: z.array(TraitDimensionSchema).readonly(),
+  thresholds: StrategyThresholdsSchema.optional(),
+}).readonly().superRefine((data, ctx) => {
+  // Check dimension index contiguity
+  const indices = data.dimensions.map((d) => d.index).sort((a, b) => a - b);
+
+  for (let i = 0; i < indices.length; i++) {
+    if (indices[i] !== i) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Dimension indices must be contiguous starting from 0. ` +
+          `Expected index ${i} but found ${indices[i]}. ` +
+          `Indices: [${indices.join(', ')}]`,
+        path: ['dimensions'],
+      });
+      break;
+    }
+  }
+
+  // Check for duplicate indices
+  const seen = new Set<number>();
+  for (const dim of data.dimensions) {
+    if (seen.has(dim.index)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate dimension index: ${dim.index} (dimension '${dim.id}')`,
+        path: ['dimensions'],
+      });
+    }
+    seen.add(dim.index);
+  }
+
+  // Check for duplicate IDs
+  const seenIds = new Set<string>();
+  for (const dim of data.dimensions) {
+    if (seenIds.has(dim.id)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate dimension ID: '${dim.id}'`,
+        path: ['dimensions'],
+      });
+    }
+    seenIds.add(dim.id);
+  }
+});
+
+export type StrategyConfig = z.infer<typeof StrategyConfigSchema>;
+
+/**
+ * Validates a strategy configuration.
+ * @throws ZodError if validation fails
+ */
+export function parseStrategyConfig(data: unknown): StrategyConfig {
+  return StrategyConfigSchema.parse(data);
+}
+
+/**
+ * Safely validates strategy configuration.
+ */
+export function safeParseStrategyConfig(data: unknown) {
+  return StrategyConfigSchema.safeParse(data);
+}
 
 /**
  * The TraitStrategy interface defines the semantic meaning of the trait space.

@@ -1,6 +1,7 @@
 import type {
   ParsedConstraint,
   ConstraintParams,
+  ConstraintParamValue,
 } from '../schemas/index.js';
 import { MalformedConstraintError } from '../schemas/index.js';
 
@@ -205,7 +206,7 @@ function parseParams(
   constraintName: string,
   source: string
 ): ConstraintParams {
-  const params: Record<string, unknown> = {};
+  const params: Record<string, ConstraintParamValue> = {};
 
   if (!paramsStr.trim()) {
     return params;
@@ -242,8 +243,9 @@ function parseParams(
 
 /**
  * Parses a parameter value string into appropriate type.
+ * Only returns safe primitive types (string, number, boolean).
  */
-function parseValue(valueStr: string): unknown {
+function parseValue(valueStr: string): ConstraintParamValue {
   // Try number
   if (/^-?\d+(\.\d+)?$/.test(valueStr)) {
     return parseFloat(valueStr);

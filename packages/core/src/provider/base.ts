@@ -1,10 +1,13 @@
 import * as semver from 'semver';
+import { ZodError } from 'zod';
 import type {
   AbstractConstraint,
   KernelIR,
   TraitStrategy,
   Features,
   FeatureLattice,
+  FeatureValue,
+  isNumericFeature,
 } from '@ctn/language';
 import type {
   CTNProvider,
@@ -19,10 +22,11 @@ import type {
   FeatureClampEvent,
   OverrideCollision,
 } from './types.js';
+import type { ApiParams, ApiParamValue } from './schemas.js';
 import {
   projectTraits,
-  validateProjectionMatrix,
   computeProjectionHash,
+  createProjectionMatrixSchemaForStrategy,
   type ProjectionMatrix,
 } from '../projection/index.js';
 import {
@@ -64,15 +68,29 @@ export abstract class BaseCTNProvider implements CTNProvider {
 
   /**
    * Registers a projection matrix for a strategy.
+   * Uses Zod-based validation for type-safe matrix verification.
    *
    * @param strategy - The trait strategy
    * @param matrix - The projection matrix
    * @throws InvalidProjectionMatrixError if matrix is invalid
    */
   protected registerProjection(strategy: TraitStrategy, matrix: ProjectionMatrix): void {
-    const errors = validateProjectionMatrix(matrix, strategy);
-    if (errors.length > 0) {
-      throw new InvalidProjectionMatrixError(this.id, strategy.name, errors);
+    // Use Zod-based validation with strategy-specific dimension checks
+    const schema = createProjectionMatrixSchemaForStrategy(strategy.dimensions.length);
+
+    try {
+      schema.parse(matrix);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        // Convert ZodError to our error format
+        const errors = error.issues.map((issue) => ({
+          parameter: issue.path.join('.'),
+          issue: 'baseline_out_of_bounds' as const,
+          details: issue.message,
+        }));
+        throw new InvalidProjectionMatrixError(this.id, strategy.name, errors);
+      }
+      throw error;
     }
 
     const key = `${strategy.name}@${strategy.version}`;

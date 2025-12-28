@@ -238,6 +238,125 @@ describe('Projection Invariants', () => {
         );
       }
     });
+
+    it('unclippedDelta precision: captures pure intent before API-legal clipping', () => {
+      // Spec requirement: Create projection where W·τ = 2.0 but clamp is [0, 1]
+      // unclippedDelta should be 2.0 (pure intent), clipped should be 1.0 (API-legal)
+      const matrix: ProjectionMatrix = {
+        baseline: { param: 0 },
+        weights: { param: [2, 0, 0, 0, 0, 0, 0] }, // W = [2, 0, ...]
+        scale: { param: 1 },
+        clamps: { param: [0, 1] }, // Tight clamp
+      };
+
+      const traits = [1, 0, 0, 0, 0, 0, 0]; // τ = [1, 0, ...]
+      const result = projectTraits(traits, matrix, strategy);
+      const detail = result.details.param!;
+
+      // W · τ = 2*1 = 2.0
+      assert.equal(
+        detail.dotProduct,
+        2.0,
+        'dotProduct (W·τ) should be 2.0'
+      );
+
+      // unclippedDelta = scale * dotProduct = 1 * 2.0 = 2.0
+      assert.equal(
+        detail.unclippedDelta,
+        2.0,
+        'unclippedDelta should preserve pure intent (2.0)'
+      );
+
+      // raw = baseline + unclippedDelta = 0 + 2.0 = 2.0
+      assert.equal(
+        detail.raw,
+        2.0,
+        'raw should be 2.0 (before clipping)'
+      );
+
+      // clipped = clamp(raw, 0, 1) = 1.0
+      assert.equal(
+        detail.clipped,
+        1.0,
+        'clipped should be API-legal (1.0)'
+      );
+
+      // Verify clipping occurred
+      assert.equal(
+        detail.wasClipped,
+        true,
+        'wasClipped should be true'
+      );
+
+      // The API parameter should use the clipped value
+      assert.equal(
+        result.params.param,
+        1.0,
+        'API param should use clipped value'
+      );
+    });
+
+    it('unclippedDelta precision: negative overflow clipped correctly', () => {
+      // Test negative overflow: W·τ = -2.0, clamp [0, 1]
+      const matrix: ProjectionMatrix = {
+        baseline: { param: 0.5 },
+        weights: { param: [-2, 0, 0, 0, 0, 0, 0] },
+        scale: { param: 1 },
+        clamps: { param: [0, 1] },
+      };
+
+      const traits = [1, 0, 0, 0, 0, 0, 0];
+      const result = projectTraits(traits, matrix, strategy);
+      const detail = result.details.param!;
+
+      // unclippedDelta = -2.0
+      assert.equal(
+        detail.unclippedDelta,
+        -2.0,
+        'unclippedDelta should be -2.0'
+      );
+
+      // raw = 0.5 + (-2.0) = -1.5
+      assert.equal(
+        detail.raw,
+        -1.5,
+        'raw should be -1.5'
+      );
+
+      // clipped = clamp(-1.5, 0, 1) = 0
+      assert.equal(
+        detail.clipped,
+        0,
+        'clipped should be 0 (lower bound)'
+      );
+    });
+
+    it('unclippedDelta precision: scale amplifies pure intent', () => {
+      // Test that scale correctly amplifies the delta
+      const matrix: ProjectionMatrix = {
+        baseline: { param: 0 },
+        weights: { param: [1, 0, 0, 0, 0, 0, 0] },
+        scale: { param: 2.5 }, // Amplify by 2.5
+        clamps: { param: [0, 1] },
+      };
+
+      const traits = [0.8, 0, 0, 0, 0, 0, 0];
+      const result = projectTraits(traits, matrix, strategy);
+      const detail = result.details.param!;
+
+      // dotProduct = 1 * 0.8 = 0.8
+      assert.equal(detail.dotProduct, 0.8, 'dotProduct should be 0.8');
+
+      // unclippedDelta = 2.5 * 0.8 = 2.0
+      assert.equal(
+        detail.unclippedDelta,
+        2.0,
+        'unclippedDelta should be scale * dotProduct = 2.0'
+      );
+
+      // clipped = 1.0 (upper bound)
+      assert.equal(detail.clipped, 1.0, 'clipped should be 1.0');
+    });
   });
 
   describe('projectionHash stability and sensitivity', () => {

@@ -1,4 +1,122 @@
+import { z } from 'zod';
 import type { TraitVector, TraitStrategy } from '@ctn/language';
+
+// ============================================================================
+// Projection Matrix Schema
+// ============================================================================
+
+/**
+ * Schema for projection matrix clamp bounds.
+ */
+export const ClampBoundsSchema = z.tuple([z.number(), z.number()]).readonly()
+  .refine(
+    ([lo, hi]) => lo <= hi,
+    { message: 'Lower bound must be <= upper bound' }
+  );
+
+export type ClampBounds = z.infer<typeof ClampBoundsSchema>;
+
+/**
+ * Schema for projection matrix with full validation.
+ *
+ * Validates:
+ * - Key alignment: baseline keys = scale keys = clamps keys
+ * - Weight keys ⊆ baseline keys
+ * - Baseline invariant: lo ≤ b ≤ hi for all parameters
+ */
+export const ProjectionMatrixSchema = z.object({
+  baseline: z.record(z.string(), z.number()),
+  weights: z.record(z.string(), z.array(z.number()).readonly()),
+  scale: z.record(z.string(), z.number()),
+  clamps: z.record(z.string(), ClampBoundsSchema),
+}).readonly().superRefine((data, ctx) => {
+  const baselineKeys = new Set(Object.keys(data.baseline));
+  const scaleKeys = new Set(Object.keys(data.scale));
+  const clampKeys = new Set(Object.keys(data.clamps));
+  const weightKeys = new Set(Object.keys(data.weights));
+
+  // Check baseline keys = scale keys
+  for (const key of baselineKeys) {
+    if (!scaleKeys.has(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Parameter '${key}' has baseline but no scale`,
+        path: ['scale'],
+      });
+    }
+    if (!clampKeys.has(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Parameter '${key}' has baseline but no clamps`,
+        path: ['clamps'],
+      });
+    }
+  }
+
+  // Check weight keys ⊆ baseline keys
+  for (const key of weightKeys) {
+    if (!baselineKeys.has(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Parameter '${key}' has weights but no baseline`,
+        path: ['weights'],
+      });
+    }
+  }
+
+  // Check baseline is within clamps
+  for (const [key, baseline] of Object.entries(data.baseline)) {
+    const clamps = data.clamps[key];
+    if (clamps) {
+      const [lo, hi] = clamps;
+      if (baseline < lo || baseline > hi) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Baseline ${baseline} outside clamp bounds [${lo}, ${hi}]`,
+          path: ['baseline', key],
+        });
+      }
+    }
+  }
+});
+
+/**
+ * Creates a validated projection matrix schema for a specific strategy.
+ * Validates weight dimension match against strategy dimensions.
+ */
+export function createProjectionMatrixSchemaForStrategy(dimensionCount: number) {
+  return ProjectionMatrixSchema.superRefine((data, ctx) => {
+    for (const [key, weights] of Object.entries(data.weights)) {
+      if (weights.length !== dimensionCount) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Weight row for '${key}' has ${weights.length} elements, expected ${dimensionCount}`,
+          path: ['weights', key],
+        });
+      }
+    }
+  });
+}
+
+/**
+ * Parses and validates a projection matrix.
+ * @throws ZodError if validation fails
+ */
+export function parseProjectionMatrix(data: unknown): ProjectionMatrix {
+  return ProjectionMatrixSchema.parse(data) as ProjectionMatrix;
+}
+
+/**
+ * Parses and validates a projection matrix for a specific strategy.
+ * @throws ZodError if validation fails
+ */
+export function parseProjectionMatrixForStrategy(
+  data: unknown,
+  strategy: TraitStrategy
+): ProjectionMatrix {
+  const schema = createProjectionMatrixSchemaForStrategy(strategy.dimensions.length);
+  return schema.parse(data) as ProjectionMatrix;
+}
 
 /**
  * Projection matrix defining the mapping from trait space to API parameters.

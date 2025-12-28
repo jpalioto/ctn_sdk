@@ -40,3 +40,33 @@ export {
   estimateTokens,
   calculateTokenBudget,
 } from './context.js';
+
+// Zod Schemas for type-safe validation
+export {
+  ApiParamValueSchema,
+  ApiParamsSchema,
+  MessageSchema,
+  MessagesSchema,
+  ProviderModelConfigSchema,
+  TraitContributionSchema,
+  ProjectionDetailSchema,
+  ProjectedConfigSchema,
+  UsageSchema,
+  FinishReasonSchema,
+  ProviderResponseSchema,
+  TokenBudgetSchema,
+  RequestSnapshotSchema,
+  ResponseSnapshotSchema,
+  AbstractConstraintDataSchema,
+  type ApiParamValue,
+  type ApiParams,
+  type ProviderModelConfig,
+  type RequestSnapshot as RequestSnapshotType,
+  type ResponseSnapshot,
+  parseApiParams,
+  parseMessage,
+  parseProviderResponse,
+  parseRequestSnapshot,
+  parseResponseSnapshot,
+  validateAbstractConstraintData,
+} from './schemas.js';

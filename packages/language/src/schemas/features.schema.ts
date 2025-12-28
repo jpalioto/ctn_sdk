@@ -110,7 +110,22 @@ export class FeatureConflictError extends Error {
 }
 
 /**
+ * Type guard for numeric feature values (local, before export).
+ */
+function isNumeric(value: FeatureValue): value is number {
+  return typeof value === 'number';
+}
+
+/**
+ * Type guard for array feature values (local, before export).
+ */
+function isArray(value: FeatureValue): value is readonly string[] {
+  return Array.isArray(value);
+}
+
+/**
  * Joins two feature values according to their lattice type.
+ * Uses type guards for type-safe lattice operations.
  */
 export function joinFeatureValues(
   featureName: string,
@@ -122,14 +137,14 @@ export function joinFeatureValues(
 
   switch (effectiveLattice) {
     case 'MIN':
-      if (typeof a === 'number' && typeof b === 'number') {
+      if (isNumeric(a) && isNumeric(b)) {
         const value = Math.min(a, b);
         return { value, source: value === a ? 'a' : value === b ? 'b' : 'merged' };
       }
       throw new TypeError(`MIN lattice requires numeric values for '${featureName}'`);
 
     case 'MAX':
-      if (typeof a === 'number' && typeof b === 'number') {
+      if (isNumeric(a) && isNumeric(b)) {
         const value = Math.max(a, b);
         return { value, source: value === a ? 'a' : value === b ? 'b' : 'merged' };
       }
@@ -142,7 +157,7 @@ export function joinFeatureValues(
       throw new FeatureConflictError(featureName, a, b);
 
     case 'UNION':
-      if (Array.isArray(a) && Array.isArray(b)) {
+      if (isArray(a) && isArray(b)) {
         const merged = [...new Set([...a, ...b])];
         return { value: merged, source: 'merged' };
       }
@@ -176,23 +191,36 @@ export function joinFeatures(a: Features, b: Features): Features {
 
 /**
  * Deep equality check for feature values.
+ * Uses type guards for type-safe comparison of ContextPolicy objects.
  */
 function deepEqual(a: FeatureValue, b: FeatureValue): boolean {
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
 
+  // Handle array comparison
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
     return a.every((val, i) => val === b[i]);
   }
 
+  // Handle ContextPolicy comparison (the only object FeatureValue type)
   if (typeof a === 'object' && typeof b === 'object' && a !== null && b !== null) {
-    const aObj = a as Record<string, unknown>;
-    const bObj = b as Record<string, unknown>;
-    const aKeys = Object.keys(aObj);
-    const bKeys = Object.keys(bObj);
-    if (aKeys.length !== bKeys.length) return false;
-    return aKeys.every((key) => deepEqual(aObj[key] as FeatureValue, bObj[key] as FeatureValue));
+    // Both must be ContextPolicy objects (not arrays)
+    if (Array.isArray(a) || Array.isArray(b)) return false;
+
+    // Type-safe ContextPolicy comparison
+    const aPolicy = a as ContextPolicy;
+    const bPolicy = b as ContextPolicy;
+
+    if (aPolicy.type !== bPolicy.type) return false;
+
+    // For 'last' type, also compare 'n'
+    if (aPolicy.type === 'last' && bPolicy.type === 'last') {
+      return aPolicy.n === bPolicy.n;
+    }
+
+    // 'all' and 'none' are equal if types match
+    return true;
   }
 
   return false;
@@ -217,4 +245,62 @@ export function safeParseFeatures(data: unknown) {
  */
 export function parseContextPolicy(data: unknown): ContextPolicy {
   return ContextPolicySchema.parse(data);
+}
+
+// ============================================================================
+// Feature Type Guards
+// ============================================================================
+
+/**
+ * Type guard for numeric feature values.
+ * Used for MIN and MAX lattice operations.
+ */
+export function isNumericFeature(value: FeatureValue): value is number {
+  return typeof value === 'number';
+}
+
+/**
+ * Type guard for set/array feature values.
+ * Used for UNION lattice operations.
+ */
+export function isSetFeature(value: FeatureValue): value is readonly string[] {
+  return Array.isArray(value);
+}
+
+/**
+ * Type guard for context policy feature values.
+ */
+export function isContextPolicy(value: FeatureValue): value is ContextPolicy {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const result = ContextPolicySchema.safeParse(value);
+  return result.success;
+}
+
+/**
+ * Type guard for string feature values.
+ */
+export function isStringFeature(value: FeatureValue): value is string {
+  return typeof value === 'string';
+}
+
+/**
+ * Type guard for boolean feature values.
+ */
+export function isBooleanFeature(value: FeatureValue): value is boolean {
+  return typeof value === 'boolean';
+}
+
+/**
+ * Gets the feature type for a value.
+ */
+export function getFeatureType(value: FeatureValue): 'number' | 'string' | 'boolean' | 'array' | 'context_policy' {
+  if (isNumericFeature(value)) return 'number';
+  if (isStringFeature(value)) return 'string';
+  if (isBooleanFeature(value)) return 'boolean';
+  if (isSetFeature(value)) return 'array';
+  if (isContextPolicy(value)) return 'context_policy';
+  // This should never happen if FeatureValue is correctly typed
+  throw new TypeError(`Unknown feature value type: ${typeof value}`);
 }

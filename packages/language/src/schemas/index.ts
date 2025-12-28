@@ -25,16 +25,27 @@ export {
 // Strategy schemas and types
 // ============================================================================
 export {
+  SemVerSchema,
+  ConstraintParamValueSchema,
   ConstraintParamsSchema,
   StrategyMetadataSchema,
   StrategyThresholdsSchema,
+  StrategyConfigSchema,
+  type SemVer,
+  type ParsedSemVer,
+  type ConstraintParamValue,
   type ConstraintParams,
   type StrategyMetadata,
   type StrategyThresholds,
+  type StrategyConfig,
   type TraitStrategy,
   DEFAULT_THRESHOLDS,
+  isValidSemVer,
+  parseSemVer,
   getStrategyMetadata,
   parseStrategyMetadata,
+  parseStrategyConfig,
+  safeParseStrategyConfig,
 } from './strategy.schema.js';
 
 // ============================================================================
@@ -62,6 +73,13 @@ export {
   parseFeatures,
   safeParseFeatures,
   parseContextPolicy,
+  // Type guards
+  isNumericFeature,
+  isSetFeature,
+  isContextPolicy,
+  isStringFeature,
+  isBooleanFeature,
+  getFeatureType,
 } from './features.schema.js';
 
 // ============================================================================

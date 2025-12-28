@@ -13,7 +13,9 @@
       "Bash(chmod:*)",
       "Bash(./scripts/check-secrets.sh:*)",
       "Bash(pnpm --filter @ctn/cli build:*)",
-      "Bash(pnpm --filter @ctn/cli exec tsx:*)"
+      "Bash(pnpm --filter @ctn/cli exec tsx:*)",
+      "Bash(pnpm -r exec:*)",
+      "Bash(grep:*)"
     ]
   }
 }
