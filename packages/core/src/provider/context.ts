@@ -49,10 +49,10 @@ export function estimateTokens(text: string | Message | readonly Message[]): num
   }
 
   if (Array.isArray(text)) {
-    return text.reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
+    return (text as readonly Message[]).reduce((sum, msg) => sum + estimateTokens(msg.content), 0);
   }
 
-  return estimateTokens(text.content);
+  return estimateTokens((text as Message).content);
 }
 
 /**

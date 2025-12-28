@@ -92,7 +92,7 @@ export class ContextWindowOverflowError extends ProviderError {
 export class ProviderConnectionError extends ProviderError {
   constructor(
     providerId: string,
-    public readonly cause: Error
+    public override readonly cause: Error
   ) {
     super(`Failed to connect to provider '${providerId}': ${cause.message}`, providerId);
     this.name = 'ProviderConnectionError';
