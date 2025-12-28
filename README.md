@@ -14,6 +14,27 @@ CTN SDK is the reference implementation of [Cognitive Tensor Networks](https://g
 
 ---
 
+## ⚠️ Proof of Concept — Experimental
+
+**What this proves:**
+- Constraint composition can be algebraically sound (associative, commutative, bounded)
+- Provider abstraction can cleanly separate semantic intent from API specifics
+- The architecture can support extensible strategies and constraints
+
+**What this does NOT prove:**
+- That the projection matrices produce meaningful behavioral differences
+- That the kernel clauses effectively steer model output
+- That this approach is better than just adjusting temperature manually
+
+**The numbers are made up.** The projection matrices are semantic guesses, not empirically calibrated. They exist to demonstrate the architecture, not to provide validated steering.
+
+**We're seeking:**
+- Feedback on whether this approach is worth pursuing
+- Empirical validation (or invalidation) of the steering hypothesis
+- Ideas for how to properly calibrate projection matrices
+
+---
+
 ## The Problem
 
 LLM APIs expose low-level parameters (temperature, top_k, max_tokens) that:
