@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky"
   },
   "keywords": [],
   "author": "John P Alioto",
@@ -12,6 +13,7 @@
   "packageManager": "pnpm@10.26.2",
   "devDependencies": {
     "@types/node": "^25.0.3",
+    "husky": "^9.1.7",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

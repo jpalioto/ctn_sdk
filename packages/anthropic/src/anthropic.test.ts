@@ -5,8 +5,8 @@ import { OperationalStrategy, Composer } from '@ctn/language';
 import { projectTraits } from '@ctn/core';
 import {
   AnthropicProvider,
-  CLAUDE_MODELS,
-  MODEL_ALIASES,
+  getClaudeModels,
+  getModelAliases,
   resolveModelId,
   getModelConfig,
   OPERATIONAL_PROJECTION_MATRIX,
@@ -14,24 +14,18 @@ import {
 
 describe('Claude Model Configurations', () => {
   it('has all expected models', () => {
-    const modelIds = CLAUDE_MODELS.map((m) => m.id);
+    const models = getClaudeModels();
+    const modelIds = models.map((m) => m.id);
 
-    // Claude 4
-    assert.ok(modelIds.includes('claude-opus-4-20250514'));
-    assert.ok(modelIds.includes('claude-sonnet-4-20250514'));
-
-    // Claude 3.5
-    assert.ok(modelIds.includes('claude-3-5-sonnet-20241022'));
-    assert.ok(modelIds.includes('claude-3-5-haiku-20241022'));
-
-    // Claude 3
-    assert.ok(modelIds.includes('claude-3-opus-20240229'));
-    assert.ok(modelIds.includes('claude-3-sonnet-20240229'));
-    assert.ok(modelIds.includes('claude-3-haiku-20240307'));
+    // Claude 4.5 Series
+    assert.ok(modelIds.includes('claude-sonnet-4-5-20250929'));
+    assert.ok(modelIds.includes('claude-opus-4-5-20251101'));
+    assert.ok(modelIds.includes('claude-haiku-4-5-20251001'));
   });
 
   it('all models have required properties', () => {
-    for (const model of CLAUDE_MODELS) {
+    const models = getClaudeModels();
+    for (const model of models) {
       assert.ok(model.id, 'model should have id');
       assert.ok(model.name, 'model should have name');
       assert.ok(model.contextWindow > 0, 'contextWindow should be positive');
@@ -40,16 +34,21 @@ describe('Claude Model Configurations', () => {
     }
   });
 
-  it('Claude 4 models support thinking', () => {
-    const opus4 = CLAUDE_MODELS.find((m) => m.id === 'claude-opus-4-20250514');
-    const sonnet4 = CLAUDE_MODELS.find((m) => m.id === 'claude-sonnet-4-20250514');
+  it('Claude 4.5 models with thinking capability are marked correctly', () => {
+    const models = getClaudeModels();
+    // Sonnet and Opus support thinking, Haiku doesn't
+    const sonnet = models.find((m) => m.id.includes('sonnet'));
+    const opus = models.find((m) => m.id.includes('opus'));
+    const haiku = models.find((m) => m.id.includes('haiku'));
 
-    assert.ok(opus4?.supportsThinking);
-    assert.ok(sonnet4?.supportsThinking);
+    assert.ok(sonnet?.supportsThinking, 'Sonnet should support thinking');
+    assert.ok(opus?.supportsThinking, 'Opus should support thinking');
+    assert.ok(!haiku?.supportsThinking, 'Haiku should not support thinking');
   });
 
   it('all models support streaming', () => {
-    for (const model of CLAUDE_MODELS) {
+    const models = getClaudeModels();
+    for (const model of models) {
       assert.ok(model.supportsStreaming, `${model.id} should support streaming`);
     }
   });
@@ -57,16 +56,16 @@ describe('Claude Model Configurations', () => {
 
 describe('Model ID Resolution', () => {
   it('resolves aliases to canonical IDs', () => {
-    assert.equal(resolveModelId('opus'), 'claude-opus-4-20250514');
-    assert.equal(resolveModelId('sonnet'), 'claude-sonnet-4-20250514');
-    assert.equal(resolveModelId('haiku'), 'claude-3-5-haiku-20241022');
-    assert.equal(resolveModelId('claude-opus-4'), 'claude-opus-4-20250514');
-    assert.equal(resolveModelId('sonnet-3.5'), 'claude-3-5-sonnet-20241022');
+    assert.equal(resolveModelId('sonnet'), 'claude-sonnet-4-5-20250929');
+    assert.equal(resolveModelId('opus'), 'claude-opus-4-5-20251101');
+    assert.equal(resolveModelId('haiku'), 'claude-haiku-4-5-20251001');
+    assert.equal(resolveModelId('claude-sonnet-latest'), 'claude-sonnet-4-5-20250929');
+    assert.equal(resolveModelId('sonnet-4.5'), 'claude-sonnet-4-5-20250929');
   });
 
   it('returns canonical ID unchanged', () => {
-    assert.equal(resolveModelId('claude-opus-4-20250514'), 'claude-opus-4-20250514');
-    assert.equal(resolveModelId('claude-3-5-sonnet-20241022'), 'claude-3-5-sonnet-20241022');
+    assert.equal(resolveModelId('claude-sonnet-4-5-20250929'), 'claude-sonnet-4-5-20250929');
+    assert.equal(resolveModelId('claude-opus-4-5-20251101'), 'claude-opus-4-5-20251101');
   });
 
   it('returns unknown IDs unchanged', () => {
@@ -76,15 +75,15 @@ describe('Model ID Resolution', () => {
 
 describe('getModelConfig', () => {
   it('gets config by canonical ID', () => {
-    const config = getModelConfig('claude-opus-4-20250514');
+    const config = getModelConfig('claude-sonnet-4-5-20250929');
     assert.ok(config);
-    assert.equal(config.name, 'Claude Opus 4');
+    assert.equal(config.name, 'Claude Sonnet 4.5');
   });
 
   it('gets config by alias', () => {
-    const config = getModelConfig('opus');
+    const config = getModelConfig('sonnet');
     assert.ok(config);
-    assert.equal(config.id, 'claude-opus-4-20250514');
+    assert.equal(config.id, 'claude-sonnet-4-5-20250929');
   });
 
   it('returns undefined for unknown model', () => {
@@ -107,7 +106,7 @@ describe('Operational Projection Matrix', () => {
     const params = Object.keys(OPERATIONAL_PROJECTION_MATRIX.baseline);
     assert.ok(params.includes('temperature'));
     assert.ok(params.includes('top_k'));
-    assert.ok(params.includes('top_p'));
+    // Note: top_p removed - Claude 4.5 doesn't support temperature + top_p together
   });
 
   it('weight dimensions match strategy', () => {
@@ -141,7 +140,6 @@ describe('Operational Projection Matrix', () => {
 
       assert.equal(result.params.temperature, 1.0);
       assert.equal(result.params.top_k, 40);
-      assert.equal(result.params.top_p, 0.95);
     });
 
     it('@precise trait vector lowers temperature', () => {
@@ -209,10 +207,10 @@ describe('Operational Projection Matrix', () => {
         `top_k ${result.params.top_k} should be > 40`
       );
 
-      // top_p should decrease
+      // temperature should decrease (stricter = more deterministic)
       assert.ok(
-        result.params.top_p! < 0.95,
-        `top_p ${result.params.top_p} should be < 0.95`
+        result.params.temperature! < 1.0,
+        `temperature ${result.params.temperature} should be < 1.0`
       );
     });
 
@@ -232,12 +230,10 @@ describe('Operational Projection Matrix', () => {
       // Should have projected parameters
       assert.ok('temperature' in result.params);
       assert.ok('top_k' in result.params);
-      assert.ok('top_p' in result.params);
 
       // All within bounds
       assert.ok(result.params.temperature! >= 0 && result.params.temperature! <= 1);
       assert.ok(result.params.top_k! >= 1 && result.params.top_k! <= 100);
-      assert.ok(result.params.top_p! >= 0 && result.params.top_p! <= 1);
     });
   });
 });
@@ -272,9 +268,9 @@ describe('AnthropicProvider', () => {
       { name: 'precise', params: {}, traits: precise, features: {} },
     ]);
 
-    const config = provider.project(ir, 'claude-sonnet-4');
+    const config = provider.project(ir, 'claude-sonnet-latest');
 
-    assert.equal(config.model, 'claude-sonnet-4');
+    assert.equal(config.model, 'claude-sonnet-latest');
     assert.ok('temperature' in config.apiParams);
     assert.ok(config.kernel.includes('<behavioral_constraints>'));
   });
@@ -317,7 +313,6 @@ describe('Projection Math Verification', () => {
     // @precise [-0.5, 0, 0, 0, 0.5, 0, 0]:
     //   temperature: 1.0 + 0.5 * (0.6*-0.5 + -0.4*0.5) = 1.0 + 0.5*(-0.5) = 0.75
     //   top_k: 40 + 30 * (-0.5*-0.5 + 0.3*0.5) = 40 + 30*(0.4) = 52
-    //   top_p: 0.95 + 0.15 * (0.3*-0.5 + -0.2*0.5) = 0.95 + 0.15*(-0.25) = 0.9125
 
     const traits = [-0.5, 0, 0, 0, 0.5, 0, 0];
     const result = projectTraits(traits, OPERATIONAL_PROJECTION_MATRIX, strategy);
@@ -330,10 +325,6 @@ describe('Projection Math Verification', () => {
       Math.abs(result.params.top_k! - 52) < 0.1,
       `top_k ${result.params.top_k} should be ~52`
     );
-    assert.ok(
-      Math.abs(result.params.top_p! - 0.9125) < 0.001,
-      `top_p ${result.params.top_p} should be ~0.9125`
-    );
   });
 
   it('@analytical produces documented values', () => {
@@ -341,7 +332,6 @@ describe('Projection Math Verification', () => {
     // @analytical [0, 0, 0, 0, 0.8, 0, 0]:
     //   temperature: 1.0 + 0.5 * (-0.4*0.8) = 1.0 - 0.16 = 0.84
     //   top_k: 40 + 30 * (0.3*0.8) = 40 + 7.2 = 47.2
-    //   top_p: 0.95 + 0.15 * (-0.2*0.8) = 0.95 - 0.024 = 0.926
 
     const traits = [0, 0, 0, 0, 0.8, 0, 0];
     const result = projectTraits(traits, OPERATIONAL_PROJECTION_MATRIX, strategy);
@@ -353,10 +343,6 @@ describe('Projection Math Verification', () => {
     assert.ok(
       Math.abs(result.params.top_k! - 47.2) < 0.1,
       `top_k ${result.params.top_k} should be ~47.2`
-    );
-    assert.ok(
-      Math.abs(result.params.top_p! - 0.926) < 0.001,
-      `top_p ${result.params.top_p} should be ~0.926`
     );
   });
 });

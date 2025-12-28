@@ -8,7 +8,10 @@
       "Bash(pnpm build:*)",
       "Bash(pnpm install:*)",
       "Bash(pnpm -r test:*)",
-      "Bash(pnpm -r build:*)"
+      "Bash(pnpm -r build:*)",
+      "Bash(npx husky init)",
+      "Bash(chmod:*)",
+      "Bash(./scripts/check-secrets.sh:*)"
     ]
   }
 }

@@ -1,0 +1,25 @@
+provider: anthropic
+models:
+  - id: claude-sonnet-4-5-20250929
+    aliases: [claude-sonnet-latest, sonnet, sonnet-4.5]
+    contextWindow: 200000
+    defaultMaxTokens: 8192
+    capabilities:
+      thinking: true
+      streaming: true
+
+  - id: claude-opus-4-5-20251101
+    aliases: [claude-opus-latest, opus, opus-4.5]
+    contextWindow: 200000
+    defaultMaxTokens: 8192
+    capabilities:
+      thinking: true
+      streaming: true
+
+  - id: claude-haiku-4-5-20251001
+    aliases: [claude-haiku-latest, haiku, haiku-4.5]
+    contextWindow: 200000
+    defaultMaxTokens: 8192
+    capabilities:
+      thinking: false
+      streaming: true

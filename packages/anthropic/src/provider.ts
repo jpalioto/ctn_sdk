@@ -24,7 +24,7 @@ import {
   type Message,
   type KernelRenderer,
 } from '@ctn/core';
-import { CLAUDE_MODELS, resolveModelId, getModelConfig } from './models.js';
+import { getClaudeModels, resolveModelId, getModelConfig } from './models.js';
 import { OPERATIONAL_PROJECTION_MATRIX } from './projection.js';
 
 /**
@@ -73,10 +73,16 @@ export interface AnthropicProviderOptions {
 export class AnthropicProvider extends BaseCTNProvider {
   readonly id = 'anthropic';
   readonly name = 'Anthropic';
-  readonly models: readonly ModelConfig[] = CLAUDE_MODELS;
   readonly supportedStrategies: readonly StrategySupport[] = [
     { name: 'operational', versionRange: '1.x' },
   ];
+
+  /**
+   * Models are loaded lazily from config/models.yaml
+   */
+  get models(): readonly ModelConfig[] {
+    return getClaudeModels();
+  }
 
   protected readonly kernelRenderer: KernelRenderer = new XMLKernelRenderer();
 
@@ -282,6 +288,8 @@ export class AnthropicProvider extends BaseCTNProvider {
 
   /**
    * Builds request params for non-streaming calls.
+   * Note: Claude 4.5 models don't support both temperature and top_p together,
+   * so we only use temperature for sampling control.
    */
   private buildRequestParams(
     model: string,
@@ -298,21 +306,23 @@ export class AnthropicProvider extends BaseCTNProvider {
     };
 
     // Only add optional params if they are defined numbers
+    // Note: Claude 4.5 doesn't support temperature + top_p together, so we only use temperature
     if (typeof params.temperature === 'number') {
       requestParams.temperature = params.temperature;
     }
     if (typeof params.top_k === 'number') {
-      requestParams.top_k = params.top_k;
+      // top_k must be an integer
+      requestParams.top_k = Math.round(params.top_k);
     }
-    if (typeof params.top_p === 'number') {
-      requestParams.top_p = params.top_p;
-    }
+    // Skip top_p - Claude 4.5 models don't allow temperature + top_p together
 
     return requestParams;
   }
 
   /**
    * Builds request params for streaming calls.
+   * Note: Claude 4.5 models don't support both temperature and top_p together,
+   * so we only use temperature for sampling control.
    */
   private buildStreamingRequestParams(
     model: string,
@@ -330,15 +340,15 @@ export class AnthropicProvider extends BaseCTNProvider {
     };
 
     // Only add optional params if they are defined numbers
+    // Note: Claude 4.5 doesn't support temperature + top_p together, so we only use temperature
     if (typeof params.temperature === 'number') {
       requestParams.temperature = params.temperature;
     }
     if (typeof params.top_k === 'number') {
-      requestParams.top_k = params.top_k;
+      // top_k must be an integer
+      requestParams.top_k = Math.round(params.top_k);
     }
-    if (typeof params.top_p === 'number') {
-      requestParams.top_p = params.top_p;
-    }
+    // Skip top_p - Claude 4.5 models don't allow temperature + top_p together
 
     return requestParams;
   }

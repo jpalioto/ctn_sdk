@@ -3,3 +3,6 @@ export * from './projection/index.js';
 
 // Re-export provider module
 export * from './provider/index.js';
+
+// Re-export config module
+export * from './config/index.js';

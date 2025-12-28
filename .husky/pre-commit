@@ -1,0 +1,24 @@
+#!/bin/sh
+
+echo "Running pre-commit checks..."
+
+# 1. Check for secrets in staged files
+echo ""
+echo "=== Checking for secrets ==="
+./scripts/check-secrets.sh
+if [ $? -ne 0 ]; then
+    echo "Secret check failed. Commit aborted."
+    exit 1
+fi
+
+# 2. Run all tests
+echo ""
+echo "=== Running tests ==="
+pnpm -r test
+if [ $? -ne 0 ]; then
+    echo "Tests failed. Commit aborted."
+    exit 1
+fi
+
+echo ""
+echo "All pre-commit checks passed!"
