@@ -1,0 +1,32 @@
+{
+  "name": "@ctn/language",
+  "version": "1.0.0",
+  "description": "Core constraint algebra for CTN SDK",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "tsx --test src/**/*.test.ts"
+  },
+  "keywords": [
+    "ctn",
+    "constraints",
+    "llm"
+  ],
+  "author": "John P Alioto",
+  "license": "MIT",
+  "dependencies": {
+    "zod": "^4.2.1"
+  }
+}
