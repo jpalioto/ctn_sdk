@@ -8,11 +8,13 @@ import type {
   Features,
   TraitInteraction,
   StrategyThresholds,
+  KernelIR,
 } from '../../schemas/index.js';
 import {
   UnknownConstraintError,
   InvalidConstraintParamError,
 } from '../../schemas/index.js';
+import type { CtnCapable } from '../../renderer/index.js';
 import {
   CTN_DIMENSIONS,
   CTN_DIMENSION_COUNT,
@@ -60,7 +62,7 @@ const CTN_DEFAULT_THRESHOLDS: StrategyThresholds = Object.freeze({
  * The composition algebra remains the same (unit ball normalization)
  * to preserve associativity and commutativity.
  */
-export class CTNStrategy implements TraitStrategy {
+export class CTNStrategy implements TraitStrategy, CtnCapable {
   readonly name = 'ctn';
   readonly version = '1.0.0';
   readonly dimensions: readonly TraitDimension[] = CTN_DIMENSIONS;
@@ -192,6 +194,89 @@ export class CTNStrategy implements TraitStrategy {
   formatProfile(traits: TraitVector): string {
     const values = traits.map(v => v.toFixed(2)).join(', ');
     return `τ = [${values}]`;
+  }
+
+  // ===========================================================================
+  // Renderer Capabilities
+  // ===========================================================================
+
+  /**
+   * Renders KernelIR as plain text.
+   * For CTN strategy, this outputs the CTN notation format.
+   * Implements PlainCapable (via TraitStrategy).
+   */
+  renderPlain(ir: KernelIR): string {
+    return this.renderCtn(ir);
+  }
+
+  /**
+   * Renders KernelIR in CTN notation format.
+   * Implements CtnCapable.
+   *
+   * CTN format uses geometric notation:
+   * - Header with strategy info
+   * - Dimension constraints with notation symbols
+   * - Modified clauses from interactions
+   */
+  renderCtn(ir: KernelIR): string {
+    const lines: string[] = [];
+
+    // Header
+    lines.push('# CTN Kernel');
+    lines.push(`# Strategy: ${ir.strategyName} v${ir.strategyVersion}`);
+    lines.push('');
+
+    // Dimension constraints
+    if (ir.clauses.length > 0) {
+      lines.push('## Geometric Constraints');
+      lines.push('');
+
+      for (const clause of ir.clauses) {
+        const notation = this.getNotation(clause.traitId);
+        const intensity = this.formatCtnIntensity(clause.intensity);
+        const polarity = clause.polarity === 'positive' ? '↑' : '↓';
+
+        lines.push(`${clause.traitId}: ${notation} ${polarity} [${intensity}]`);
+        lines.push(`   ${clause.text}`);
+        lines.push('');
+      }
+    }
+
+    // Modified clauses from interactions
+    if (ir.modifiedClauses.length > 0) {
+      lines.push('## Interaction Resolutions');
+      lines.push('');
+
+      for (const mod of ir.modifiedClauses) {
+        lines.push(`${mod.interactionId}:`);
+        lines.push(`   ${mod.text}`);
+        if (mod.replacedTraits.length > 0) {
+          lines.push(`   Replaces: ${mod.replacedTraits.join(', ')}`);
+        }
+        lines.push('');
+      }
+    }
+
+    // Omitted traits (for debugging/transparency)
+    if (ir.omittedTraits.length > 0) {
+      lines.push(`# Omitted (below threshold): ${ir.omittedTraits.join(', ')}`);
+    }
+
+    return lines.join('\n').trim();
+  }
+
+  /**
+   * Formats intensity for CTN notation.
+   */
+  private formatCtnIntensity(intensity: 'low' | 'medium' | 'high'): string {
+    switch (intensity) {
+      case 'high':
+        return '0.7-1.0';
+      case 'medium':
+        return '0.4-0.7';
+      case 'low':
+        return '0.1-0.4';
+    }
   }
 
   /**

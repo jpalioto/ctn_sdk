@@ -8,41 +8,39 @@ import type { TraitInteraction } from '../../schemas/index.js';
  *
  * CTN dimensions use 0-1 range, so "both_high" means both > 0.7
  *
+ * Dimension indices:
+ * - v1 (Atomic Clarity) = 0
+ * - v2 (Specification Accuracy) = 1
+ * - v3 (Context Isolation) = 2
+ * - v4 (Structure Over Narrative) = 3
+ * - v5 (Framing Detachment) = 4
+ * - v6 (Exploration) = 5
+ * - v7 (Schema Compliance) = 6
+ *
  * Key principle: interactions are NON-EXPANSIVE (‖τ'‖ ≤ ‖τ‖)
  */
 
 export const CTN_INTERACTIONS: readonly TraitInteraction[] = Object.freeze([
   {
     id: 'exploration-schema',
-    description: 'High exploration conflicts with high schema compliance',
-    traits: ['v6', 'v7'],
+    traitIndices: [5, 6] as const, // v6 (Exploration), v7 (Schema Compliance)
     condition: 'both_high',
     resolution: 'priority',
-    priorityIndex: 1, // Schema compliance wins - structured output takes precedence
+    priorityIndex: 6, // Schema compliance wins - structured output takes precedence
   },
   {
     id: 'structure-exploration',
-    description: 'High structure priority limits exploration',
-    traits: ['v4', 'v6'],
+    traitIndices: [3, 5] as const, // v4 (Structure), v6 (Exploration)
     condition: 'both_high',
     resolution: 'modify',
-    // When both high, reduce exploration to maintain structural integrity
-    modifyFn: (v4: number, v6: number) => ({
-      v4,
-      v6: Math.min(v6, 1 - v4 * 0.5), // Exploration capped as structure increases
-    }),
+    modifiedText: 'Maintain structural integrity; exploration constrained to formal variations',
   },
   {
     id: 'isolation-exploration',
-    description: 'High context isolation reduces meaningful exploration',
-    traits: ['v3', 'v6'],
+    traitIndices: [2, 5] as const, // v3 (Context Isolation), v6 (Exploration)
     condition: 'both_high',
     resolution: 'modify',
-    // Can't explore much if you're ignoring context
-    modifyFn: (v3: number, v6: number) => ({
-      v3,
-      v6: Math.min(v6, 1 - v3 * 0.3),
-    }),
+    modifiedText: 'Explore within isolated context; external connections suppressed',
   },
 ]);
 

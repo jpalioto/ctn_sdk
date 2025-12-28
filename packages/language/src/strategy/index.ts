@@ -17,3 +17,6 @@ export {
   operationalStrategy,
   type OperationalStrategyConfig,
 } from './operational/index.js';
+
+// Re-export CTN strategy
+export * from './ctn/index.js';
