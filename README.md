@@ -14,24 +14,28 @@ CTN SDK is the reference implementation of [Cognitive Tensor Networks](https://g
 
 ---
 
-## ⚠️ Proof of Concept — Experimental
+## ⚠️ Status: Proof of Concept — NOT FOR PRODUCTION USE
 
-**What this proves:**
-- Constraint composition can be algebraically sound (associative, commutative, bounded)
-- Provider abstraction can cleanly separate semantic intent from API specifics
-- The architecture can support extensible strategies and constraints
+**This is experimental software.** It demonstrates an approach, not a validated solution.
 
-**What this does NOT prove:**
-- That the projection matrices produce meaningful behavioral differences
-- That the kernel clauses effectively steer model output
-- That this approach is better than just adjusting temperature manually
+| Aspect | Status |
+|--------|--------|
+| **Architecture** | ✅ Demonstrated — clean extension points, full observability |
+| **Algebra** | ✅ Proven — 251 tests, associativity/commutativity verified |
+| **Steering Effectiveness** | ❓ Unvalidated hypothesis — no empirical evidence yet |
+| **Projection Matrices** | ❓ Made up — semantic guesses, not calibrated |
+| **Security Review** | ❌ Not done — do not use with untrusted input in production |
+| **Battle Testing** | ❌ None — zero real-world usage |
 
-**The numbers are made up.** The projection matrices are semantic guesses, not empirically calibrated. They exist to demonstrate the architecture, not to provide validated steering.
+**Do not use this in production systems.** The API may change. The projection matrices are placeholders. The security model has not been audited.
 
-**We're seeking:**
+**What we're seeking:**
 - Feedback on whether this approach is worth pursuing
 - Empirical validation (or invalidation) of the steering hypothesis
 - Ideas for how to properly calibrate projection matrices
+- Security review from the community
+
+**Read:** [Why CTN Exists](PHILOSOPHY.md) — explains what this is actually doing (spoiler: no magic, just tokens)
 
 ---
 
