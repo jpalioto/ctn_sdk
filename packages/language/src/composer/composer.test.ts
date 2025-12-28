@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 
-import { OperationalStrategy } from '../strategy/operational.js';
+import { OperationalStrategy } from '../strategy/index.js';
 import { Composer, compose } from './composer.js';
 import { magnitude } from '../schemas/index.js';
 import type { ResolvedConstraint, TraitVector } from '../schemas/index.js';

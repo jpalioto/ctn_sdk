@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 
-import { OperationalStrategy } from './operational.js';
+import { OperationalStrategy } from './index.js';
 import { Composer } from '../composer/composer.js';
 import { resolveInteractions } from '../composer/interactions.js';
 import { generateKernelIR } from '../kernel/generator.js';

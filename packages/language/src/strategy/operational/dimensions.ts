@@ -1,4 +1,4 @@
-import type { TraitDimension } from '../schemas/index.js';
+import type { TraitDimension } from '../../schemas/index.js';
 
 /**
  * Operational Strategy Dimension Definitions

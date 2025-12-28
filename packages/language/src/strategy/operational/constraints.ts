@@ -1,4 +1,4 @@
-import type { ConstraintDefinition } from '../schemas/index.js';
+import type { ConstraintDefinition } from '../../schemas/index.js';
 
 /**
  * Built-in constraint definitions for the Operational strategy.

@@ -8,12 +8,12 @@ import type {
   Features,
   TraitInteraction,
   StrategyThresholds,
-} from '../schemas/index.js';
+} from '../../schemas/index.js';
 import {
   UnknownConstraintError,
   InvalidConstraintParamError,
   DEFAULT_THRESHOLDS,
-} from '../schemas/index.js';
+} from '../../schemas/index.js';
 import {
   OPERATIONAL_DIMENSIONS,
   OPERATIONAL_DIMENSION_COUNT,

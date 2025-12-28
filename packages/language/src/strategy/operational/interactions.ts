@@ -1,4 +1,4 @@
-import type { TraitInteraction } from '../schemas/index.js';
+import type { TraitInteraction } from '../../schemas/index.js';
 import { DIMENSION_ID_TO_INDEX } from './dimensions.js';
 
 /**

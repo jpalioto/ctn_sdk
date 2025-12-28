@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 import * as fc from 'fast-check';
 
-import { OperationalStrategy } from '../strategy/operational.js';
+import { OperationalStrategy } from '../strategy/index.js';
 import { Composer } from './composer.js';
 import { resolveInteractions } from './interactions.js';
 import { magnitude } from '../schemas/index.js';

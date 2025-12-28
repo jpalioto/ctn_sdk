@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 
-import { OperationalStrategy } from '../strategy/operational.js';
+import { OperationalStrategy } from '../strategy/index.js';
 import {
   generateKernelIR,
   isEmptyKernel,
