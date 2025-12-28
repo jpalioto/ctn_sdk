@@ -65,10 +65,10 @@ ctn send "@precise @terse Explain the stock market"
 
 The same prompt with different constraints:
 
-| Constraints | Output | Tokens |
+| Constraints | Output | Effect |
 |-------------|--------|--------|
-| `@precise` | Detailed, structured explanation | 355 |
-| `@precise @terse` | Dense summary (clamped) | 256 |
+| `@precise` | Detailed, structured explanation | Steered toward deterministic, analytical |
+| `@precise @terse` | Dense summary | Steered toward brevity through traits |
 
 The `--trace` flag reveals the machinery:
 
@@ -77,9 +77,6 @@ Trait Vector:
   v1: -0.500    # Stochasticity (negative = deterministic)
   v2: +0.500    # Concision (positive = terse)
   v5: +0.500    # Reasoning (positive = analytical)
-
-Features:
-  max_tokens: 256   # Hard clamp from @terse
 
 Projected API Parameters:
   temperature: 0.7500
@@ -92,6 +89,8 @@ Kernel:
   <constraint id="v5">Moderately favor step-by-step analytical reasoning</constraint>
 </behavioral_constraints>
 ```
+
+**Key insight:** Brevity is achieved through behavioral steering (the kernel clause), not mechanical truncation. The model *chooses* to be brief.
 
 ---
 
@@ -139,11 +138,14 @@ Kernel:
 
 ### Mechanical Constraints (Features)
 
+Features are only used for settings that MUST be mechanical—things that cannot be achieved through behavioral steering.
+
 | Constraint | Effect |
 |------------|--------|
-| `@terse` | max_tokens: 256 |
 | `@nomemory` | context: none |
 | `@lastN[n=5]` | context: { last: 5 } |
+
+**Note:** Behavioral constraints like `@terse` and `@verbose` use traits only. The model chooses brevity through steering, not truncation. For hard token limits, use explicit parameters.
 
 ### Trait Dimensions (Operational Strategy)
 

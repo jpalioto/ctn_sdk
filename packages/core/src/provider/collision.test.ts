@@ -401,10 +401,10 @@ describe('Composition with Conflicting Features', () => {
   const composer = new Composer(strategy);
 
   it('composing constraints with compatible features succeeds', () => {
-    // @terse has max_tokens: 256
-    // @precise has no features
+    // @terse and @precise both have no features (only traits)
+    // @nomemory has a context feature
     const terseResult = strategy.resolveWithFeatures('terse', {});
-    const preciseResult = strategy.resolveWithFeatures('precise', {});
+    const nomemoryResult = strategy.resolveWithFeatures('nomemory', {});
 
     const terse: ResolvedConstraint = {
       name: 'terse',
@@ -413,16 +413,17 @@ describe('Composition with Conflicting Features', () => {
       features: terseResult.features,
     };
 
-    const precise: ResolvedConstraint = {
-      name: 'precise',
+    const nomemory: ResolvedConstraint = {
+      name: 'nomemory',
       params: {},
-      traits: preciseResult.traits,
-      features: preciseResult.features,
+      traits: nomemoryResult.traits,
+      features: nomemoryResult.features,
     };
 
-    // Should not throw
-    const result = composer.compose([terse, precise]);
-    assert.ok(result.features.max_tokens === 256);
+    // Should not throw - compatible features compose
+    const result = composer.compose([terse, nomemory]);
+    // @nomemory sets context: { type: 'none' }
+    assert.deepEqual(result.features.context, { type: 'none' });
   });
 
   it('composing constraints with MIN features takes minimum', () => {

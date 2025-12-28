@@ -3,20 +3,26 @@ import type { ConstraintDefinition } from '../schemas/index.js';
 /**
  * Built-in constraint definitions for the Operational strategy.
  *
- * From specification section 2.3:
+ * Design principle: Features are only used for MECHANICAL settings that cannot
+ * be expressed through behavioral steering (e.g., context policies). All
+ * behavioral intent is expressed through traits only - the model should choose
+ * brevity/verbosity through steering, not truncation.
+ *
+ * For hard token limits, use @tokens[n=256] explicitly (not implemented yet).
+ *
  * | Constraint    | Aliases                  | Effect                    |
  * |---------------|--------------------------|---------------------------|
  * | @precise      | deterministic, grounded  | v1:-0.5, v5:+0.5          |
  * | @creative     | exploratory              | v1:+0.5                   |
- * | @terse        | brief, concise           | v2:+0.5, max_tokens:256   |
+ * | @terse        | brief, concise           | v2:+0.5                   |
  * | @verbose      | detailed, thorough       | v2:-0.5                   |
  * | @formal       | —                        | v4:+0.5                   |
  * | @casual       | —                        | v4:-0.5                   |
  * | @analytical   | step-by-step, reasoning  | v5:+0.8                   |
  * | @strict       | compliant                | v6:+0.5                   |
  * | @flexible     | —                        | v6:-0.5                   |
- * | @nomemory     | isolated                 | context: none             |
- * | @lastN[n=N]   | —                        | context.last: N           |
+ * | @nomemory     | isolated                 | context: none (mechanical)|
+ * | @lastN[n=N]   | —                        | context.last: N (mech.)   |
  */
 export const OPERATIONAL_CONSTRAINTS: readonly ConstraintDefinition[] = Object.freeze([
   {
@@ -33,7 +39,7 @@ export const OPERATIONAL_CONSTRAINTS: readonly ConstraintDefinition[] = Object.f
     name: 'terse',
     aliases: ['brief', 'concise'],
     traits: { v2: 0.5 },
-    features: { max_tokens: 256 },
+    // No features - brevity is achieved through behavioral steering, not truncation
   },
   {
     name: 'verbose',
