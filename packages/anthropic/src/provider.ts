@@ -4,10 +4,9 @@ import type {
   MessageStreamEvent,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/messages';
-import { OperationalStrategy } from '@ctn/language';
+import { OperationalStrategy, type AbstractConstraint } from '@ctn/language';
 import {
   BaseCTNProvider,
-  XMLKernelRenderer,
   ProviderConnectionError,
   ProviderRateLimitError,
   ProviderResponseError,
@@ -15,6 +14,9 @@ import {
   ContextWindowOverflowError,
   applyContextPolicy,
   calculateTokenBudget,
+  renderKernel,
+  resolveContextPolicy,
+  projectTraits,
   type ModelConfig,
   type StrategySupport,
   type ProjectedConfig,
@@ -22,10 +24,10 @@ import {
   type ProviderResponse,
   type StreamChunk,
   type Message,
-  type KernelRenderer,
 } from '@ctn/core';
 import { getClaudeModels, resolveModelId, getModelConfig } from './models.js';
 import { OPERATIONAL_PROJECTION_MATRIX } from './projection.js';
+import { anthropicRendererPreferences } from './renderer-preferences.js';
 
 /**
  * Options for creating an AnthropicProvider.
@@ -84,10 +86,18 @@ export class AnthropicProvider extends BaseCTNProvider {
     return getClaudeModels();
   }
 
-  protected readonly kernelRenderer: KernelRenderer = new XMLKernelRenderer();
-
   private readonly client: Anthropic;
   private readonly defaultTimeout: number;
+
+  /**
+   * Dummy kernelRenderer to satisfy abstract requirement.
+   * Not used - project() is overridden to use capability negotiation.
+   */
+  protected readonly kernelRenderer = {
+    render: () => {
+      throw new Error('kernelRenderer.render() should not be called - use project() override');
+    },
+  };
 
   constructor(options: AnthropicProviderOptions = {}) {
     super();
@@ -128,6 +138,53 @@ export class AnthropicProvider extends BaseCTNProvider {
       );
     }
     return model;
+  }
+
+  /**
+   * Projects an abstract constraint to provider-specific configuration.
+   * Overrides base to use capability negotiation for kernel rendering.
+   */
+  override project(ir: AbstractConstraint, modelId: string): ProjectedConfig {
+    const strategy = ir.strategy;
+
+    // Delegate most work to base class projection logic
+    // But we need to call it and then fix the kernel rendering
+    // Actually, we need to replicate the logic since base uses kernelRenderer
+
+    // Check strategy is supported
+    if (!this.supportsStrategy(strategy.name, strategy.version)) {
+      // Let base class handle the error
+      return super.project(ir, modelId);
+    }
+
+    // Get projection matrix
+    const matrix = this.getProjection(strategy.name, strategy.version);
+    if (!matrix) {
+      // Let base class handle the error
+      return super.project(ir, modelId);
+    }
+
+    // Validate model
+    this.getModel(modelId);
+
+    // Project traits
+    const { params, details } = projectTraits(ir.traits, matrix, strategy);
+
+    // Apply feature clamps
+    const { clampedParams } = this.applyFeatureClamps(params, ir.features);
+
+    // Render kernel using capability negotiation
+    const kernel = renderKernel(strategy, ir.kernelIR, anthropicRendererPreferences);
+
+    return {
+      model: modelId,
+      apiParams: clampedParams,
+      projectionDetails: details,
+      kernel,
+      kernelIR: ir.kernelIR,
+      contextPolicy: resolveContextPolicy(ir.features),
+      features: ir.features,
+    };
   }
 
   /**

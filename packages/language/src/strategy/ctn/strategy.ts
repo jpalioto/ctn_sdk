@@ -1,4 +1,3 @@
-import type { XmlCapable, MarkdownCapable } from '../../renderer/index.js';
 import type {
   TraitVector,
   TraitDimension,
@@ -9,63 +8,80 @@ import type {
   Features,
   TraitInteraction,
   StrategyThresholds,
-  KernelIR,
 } from '../../schemas/index.js';
 import {
   UnknownConstraintError,
   InvalidConstraintParamError,
-  DEFAULT_THRESHOLDS,
 } from '../../schemas/index.js';
 import {
-  OPERATIONAL_DIMENSIONS,
-  OPERATIONAL_DIMENSION_COUNT,
-  DIMENSION_ID_TO_INDEX,
+  CTN_DIMENSIONS,
+  CTN_DIMENSION_COUNT,
+  CTN_DIMENSION_ID_TO_INDEX,
+  CTN_DIMENSION_NOTATION,
 } from './dimensions.js';
-import { OPERATIONAL_CONSTRAINTS, buildConstraintMap } from './constraints.js';
-import { OPERATIONAL_INTERACTIONS } from './interactions.js';
+import { CTN_CONSTRAINTS, buildConstraintMap } from './constraints.js';
+import { CTN_INTERACTIONS, CTN_INTERACTION_THRESHOLD } from './interactions.js';
 
 /**
- * Configuration options for OperationalStrategy.
+ * Configuration options for CTNStrategy.
  */
-export interface OperationalStrategyConfig {
+export interface CTNStrategyConfig {
   /** Custom thresholds for kernel generation and interactions */
   readonly thresholds?: Partial<StrategyThresholds>;
 }
 
 /**
- * The Operational strategy for general-purpose behavioral control.
+ * Default thresholds for CTN strategy.
  *
- * Implements a 7-dimensional trait space:
- * - v1: Stochasticity (creative ↔ deterministic)
- * - v2: Concision (brief ↔ detailed)
- * - v3: Agency (proactive ↔ reactive)
- * - v4: Formality (formal ↔ casual)
- * - v5: Reasoning (analytical ↔ intuitive)
- * - v6: Compliance (strict ↔ flexible)
- * - v7: Context Density (heavy ↔ minimal)
+ * CTN uses 0-1 range, so thresholds are higher than Operational's -1 to +1 range.
  */
-export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownCapable {
-  readonly name = 'operational';
+const CTN_DEFAULT_THRESHOLDS: StrategyThresholds = Object.freeze({
+  kernel: 0.3,       // Include in kernel if value >= 0.3
+  interaction: 0.7,  // Trigger interaction if both values >= 0.7
+});
+
+/**
+ * The CTN strategy for geometric constraint specification.
+ *
+ * Implements a 7-dimensional constraint space based on the
+ * Cognitive Tensor Network specification:
+ *
+ * - v1: Atomic Clarity (ε_hid → 0⁺)
+ * - v2: Specification Accuracy (κ(f) → min)
+ * - v3: Context Isolation (Φ:W→I)
+ * - v4: Structure Over Narrative (π_gl ≫ π_loc)
+ * - v5: Framing Detachment (∂A ≡ A)
+ * - v6: Exploration (U \ S)
+ * - v7: Schema Compliance (CTN_Form)
+ *
+ * Unlike Operational strategy (-1 to +1 poles), CTN uses 0-1 range
+ * where 0 = no constraint and 1 = maximum constraint.
+ *
+ * The composition algebra remains the same (unit ball normalization)
+ * to preserve associativity and commutativity.
+ */
+export class CTNStrategy implements TraitStrategy {
+  readonly name = 'ctn';
   readonly version = '1.0.0';
-  readonly dimensions: readonly TraitDimension[] = OPERATIONAL_DIMENSIONS;
-  readonly interactions: readonly TraitInteraction[] = OPERATIONAL_INTERACTIONS;
+  readonly dimensions: readonly TraitDimension[] = CTN_DIMENSIONS;
+  readonly interactions: readonly TraitInteraction[] = CTN_INTERACTIONS;
   readonly thresholds: StrategyThresholds;
 
   private readonly constraintMap: Map<string, ConstraintDefinition>;
   private readonly identityVector: TraitVector;
 
-  constructor(config?: OperationalStrategyConfig) {
-    this.constraintMap = buildConstraintMap(OPERATIONAL_CONSTRAINTS);
-    this.identityVector = Object.freeze(new Array(OPERATIONAL_DIMENSION_COUNT).fill(0));
+  constructor(config?: CTNStrategyConfig) {
+    this.constraintMap = buildConstraintMap(CTN_CONSTRAINTS);
+    this.identityVector = Object.freeze(new Array(CTN_DIMENSION_COUNT).fill(0));
     this.thresholds = Object.freeze({
-      kernel: config?.thresholds?.kernel ?? DEFAULT_THRESHOLDS.kernel,
-      interaction: config?.thresholds?.interaction ?? DEFAULT_THRESHOLDS.interaction,
+      kernel: config?.thresholds?.kernel ?? CTN_DEFAULT_THRESHOLDS.kernel,
+      interaction: config?.thresholds?.interaction ?? CTN_DEFAULT_THRESHOLDS.interaction,
     });
   }
 
   /**
    * Returns the identity element (zero vector).
-   * The identity represents "no behavioral modification".
+   * The identity represents "no constraints applied".
    */
   identity(): TraitVector {
     return this.identityVector;
@@ -74,24 +90,26 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
   /**
    * Raw vector addition without normalization.
    * The Composer applies normalization once after all additions.
+   *
+   * Note: CTN uses 0-1 range but same algebraic composition as Operational.
    */
   add(a: TraitVector, b: TraitVector): TraitVector {
-    if (a.length !== OPERATIONAL_DIMENSION_COUNT) {
-      throw new Error(`Vector a has ${a.length} dimensions, expected ${OPERATIONAL_DIMENSION_COUNT}`);
+    if (a.length !== CTN_DIMENSION_COUNT) {
+      throw new Error(`Vector a has ${a.length} dimensions, expected ${CTN_DIMENSION_COUNT}`);
     }
-    if (b.length !== OPERATIONAL_DIMENSION_COUNT) {
-      throw new Error(`Vector b has ${b.length} dimensions, expected ${OPERATIONAL_DIMENSION_COUNT}`);
+    if (b.length !== CTN_DIMENSION_COUNT) {
+      throw new Error(`Vector b has ${b.length} dimensions, expected ${CTN_DIMENSION_COUNT}`);
     }
 
-    const result = new Array<number>(OPERATIONAL_DIMENSION_COUNT);
-    for (let i = 0; i < OPERATIONAL_DIMENSION_COUNT; i++) {
+    const result = new Array<number>(CTN_DIMENSION_COUNT);
+    for (let i = 0; i < CTN_DIMENSION_COUNT; i++) {
       result[i] = a[i]! + b[i]!;
     }
     return Object.freeze(result);
   }
 
   /**
-   * Resolves a constraint name and parameters to a trait vector and features.
+   * Resolves a constraint name and parameters to a trait vector.
    *
    * @throws UnknownConstraintError if the constraint name is not recognized
    * @throws InvalidConstraintParamError if parameters are invalid
@@ -154,17 +172,33 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
 
   /**
    * Formats a trait vector as a compact string representation.
+   * Uses CTN notation style.
    */
   formatVectorCompact(traits: TraitVector): string {
     const parts: string[] = [];
     for (const dim of this.dimensions) {
       const value = traits[dim.index];
-      if (value !== undefined && value !== 0) {
-        const sign = value > 0 ? '+' : '';
-        parts.push(`${dim.id}:${sign}${value.toFixed(2)}`);
+      if (value !== undefined && value > 0) {
+        parts.push(`${dim.id}:${value.toFixed(2)}`);
       }
     }
-    return parts.length > 0 ? `[${parts.join(', ')}]` : '[zero]';
+    return parts.length > 0 ? `τ=[${parts.join(', ')}]` : 'τ=[0]';
+  }
+
+  /**
+   * Formats a trait vector as a CTN profile string.
+   * Example: τ = [0.9, 0.9, 0.7, 0.9, 0.9, 0.3, 0.0]
+   */
+  formatProfile(traits: TraitVector): string {
+    const values = traits.map(v => v.toFixed(2)).join(', ');
+    return `τ = [${values}]`;
+  }
+
+  /**
+   * Gets the CTN notation symbol for a dimension.
+   */
+  getNotation(dimId: string): string {
+    return CTN_DIMENSION_NOTATION[dimId] ?? dimId;
   }
 
   /**
@@ -181,96 +215,14 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
     return this.constraintMap.has(name);
   }
 
-  // ===========================================================================
-  // Rendering Capabilities
-  // ===========================================================================
-
-  /**
-   * Renders KernelIR as plain text.
-   * Required by PlainCapable (base contract for all strategies).
-   */
-  renderPlain(ir: KernelIR): string {
-    const lines = ['Behavioral Constraints:', ''];
-
-    for (const clause of ir.clauses) {
-      const intensity = this.formatIntensity(clause.intensity);
-      lines.push(`${clause.traitId}: ${intensity} favor ${clause.text}`);
-    }
-
-    for (const mod of ir.modifiedClauses) {
-      lines.push(`${mod.interactionId}: ${mod.text}`);
-    }
-
-    return lines.join('\n');
-  }
-
-  /**
-   * Renders KernelIR as XML (preferred by Anthropic Claude models).
-   * Implements XmlCapable.
-   */
-  renderXml(ir: KernelIR): string {
-    const lines = ['<behavioral_constraints>'];
-
-    for (const clause of ir.clauses) {
-      const intensity = this.formatIntensity(clause.intensity);
-      lines.push(
-        `  <constraint id="${clause.traitId}">${intensity} favor ${clause.text}</constraint>`
-      );
-    }
-
-    for (const mod of ir.modifiedClauses) {
-      lines.push(`  <constraint id="${mod.interactionId}">${mod.text}</constraint>`);
-    }
-
-    lines.push('</behavioral_constraints>');
-    return lines.join('\n');
-  }
-
-  /**
-   * Renders KernelIR as Markdown (preferred by OpenAI models).
-   * Implements MarkdownCapable.
-   */
-  renderMarkdown(ir: KernelIR): string {
-    const lines = ['## Behavioral Constraints', ''];
-
-    for (const clause of ir.clauses) {
-      const intensity = this.formatIntensity(clause.intensity);
-      lines.push(`- **${clause.traitId}**: ${intensity} favor ${clause.text}`);
-    }
-
-    for (const mod of ir.modifiedClauses) {
-      lines.push(`- **${mod.interactionId}**: ${mod.text}`);
-    }
-
-    return lines.join('\n');
-  }
-
-  /**
-   * Formats clause intensity as a human-readable string.
-   */
-  private formatIntensity(intensity: 'low' | 'medium' | 'high'): string {
-    switch (intensity) {
-      case 'high':
-        return 'Strongly';
-      case 'medium':
-        return 'Moderately';
-      case 'low':
-        return 'Slightly';
-    }
-  }
-
-  // ===========================================================================
-  // Private Helpers
-  // ===========================================================================
-
   /**
    * Converts a trait map (by dimension ID) to a trait vector.
    */
   private traitsToVector(traits: Readonly<Record<string, number>>): TraitVector {
-    const result = new Array<number>(OPERATIONAL_DIMENSION_COUNT).fill(0);
+    const result = new Array<number>(CTN_DIMENSION_COUNT).fill(0);
 
     for (const [dimId, value] of Object.entries(traits)) {
-      const index = DIMENSION_ID_TO_INDEX[dimId];
+      const index = CTN_DIMENSION_ID_TO_INDEX[dimId];
       if (index !== undefined) {
         result[index] = value;
       }
@@ -303,7 +255,6 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
       }
     }
 
-    // For lastN, traits are empty (it only affects features)
     return this.traitsToVector(definition.traits);
   }
 
@@ -356,4 +307,4 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
  * Singleton instance for convenience.
  * Note: Dependency injection is preferred for testability.
  */
-export const operationalStrategy = new OperationalStrategy();
+export const ctnStrategy = new CTNStrategy();

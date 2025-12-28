@@ -12,3 +12,6 @@ export * from './kernel/index.js';
 
 // Re-export parser module
 export * from './parser/index.js';
+
+// Re-export renderer module (capability interfaces)
+export * from './renderer/index.js';

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PlainCapable } from '../renderer/index.js';
 import {
   TraitVectorSchema,
   TraitDimensionSchema,
@@ -201,10 +202,14 @@ export function safeParseStrategyConfig(data: unknown) {
 /**
  * The TraitStrategy interface defines the semantic meaning of the trait space.
  *
+ * All strategies must implement PlainCapable (renderPlain) as the base contract.
+ * Strategies may implement additional rendering capabilities (XmlCapable,
+ * MarkdownCapable, CtnCapable) which providers can negotiate.
+ *
  * Note: This is an interface with methods, so we define it manually
  * rather than deriving from a schema. The schema is used for metadata only.
  */
-export interface TraitStrategy {
+export interface TraitStrategy extends PlainCapable {
   readonly name: string;
   readonly version: string;
   readonly dimensions: readonly TraitDimension[];

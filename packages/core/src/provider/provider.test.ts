@@ -9,9 +9,6 @@ import {
 } from '@ctn/language';
 import {
   BaseCTNProvider,
-  XMLKernelRenderer,
-  MarkdownKernelRenderer,
-  PlainTextKernelRenderer,
   UnsupportedStrategyError,
   StrategyVersionMismatchError,
   InvalidProjectionMatrixError,
@@ -27,7 +24,6 @@ import {
   type SendOptions,
   type ProviderResponse,
   type StreamChunk,
-  type KernelRenderer,
 } from './index.js';
 import type { ProjectionMatrix } from '../projection/index.js';
 
@@ -46,8 +42,6 @@ class TestProvider extends BaseCTNProvider {
   readonly supportedStrategies: readonly StrategySupport[] = [
     { name: 'operational', versionRange: '1.x' },
   ];
-
-  protected readonly kernelRenderer: KernelRenderer = new XMLKernelRenderer();
 
   constructor() {
     super();
@@ -118,7 +112,8 @@ describe('BaseCTNProvider', () => {
       assert.equal(config.model, 'test-model');
       assert.ok('temperature' in config.apiParams);
       assert.ok('top_k' in config.apiParams);
-      assert.ok(config.kernel.includes('<behavioral_constraints>'));
+      // renderPlain() produces plain text format
+      assert.ok(config.kernel.includes('Behavioral Constraints:'));
     });
 
     it('throws for unsupported strategy', () => {
@@ -134,6 +129,7 @@ describe('BaseCTNProvider', () => {
           resolve: () => [],
           formatVector: () => ({}),
           formatVectorCompact: () => '',
+          renderPlain: () => '',
         },
         traits: [0, 0, 0, 0, 0, 0, 0],
         features: {},
@@ -158,31 +154,6 @@ describe('BaseCTNProvider', () => {
     });
   });
 
-  describe('renderKernel', () => {
-    it('renders kernel IR', () => {
-      const provider = new TestProvider();
-      const kernelIR: KernelIR = {
-        strategyName: 'operational',
-        strategyVersion: '1.0.0',
-        clauses: [
-          {
-            traitId: 'v1',
-            traitIndex: 0,
-            polarity: 'negative',
-            intensity: 'medium',
-            text: 'deterministic, grounded responses',
-          },
-        ],
-        omittedTraits: [],
-        modifiedClauses: [],
-      };
-
-      const rendered = provider.renderKernel(kernelIR);
-      assert.ok(rendered.includes('<behavioral_constraints>'));
-      assert.ok(rendered.includes('deterministic, grounded responses'));
-    });
-  });
-
   describe('projection matrix validation', () => {
     it('throws on invalid matrix registration', () => {
       class BadProvider extends BaseCTNProvider {
@@ -190,7 +161,6 @@ describe('BaseCTNProvider', () => {
         readonly name = 'Bad Provider';
         readonly models: readonly ModelConfig[] = [];
         readonly supportedStrategies: readonly StrategySupport[] = [];
-        protected readonly kernelRenderer: KernelRenderer = new XMLKernelRenderer();
 
         constructor() {
           super();
@@ -213,79 +183,6 @@ describe('BaseCTNProvider', () => {
       }
 
       assert.throws(() => new BadProvider(), InvalidProjectionMatrixError);
-    });
-  });
-});
-
-describe('Kernel Renderers', () => {
-  const kernelIR: KernelIR = {
-    strategyName: 'operational',
-    strategyVersion: '1.0.0',
-    clauses: [
-      {
-        traitId: 'v1',
-        traitIndex: 0,
-        polarity: 'positive',
-        intensity: 'high',
-        text: 'creative, exploratory responses',
-      },
-      {
-        traitId: 'v5',
-        traitIndex: 4,
-        polarity: 'positive',
-        intensity: 'medium',
-        text: 'step-by-step analytical reasoning',
-      },
-    ],
-    omittedTraits: ['v2', 'v3', 'v4'],
-    modifiedClauses: [
-      {
-        interactionId: 'test-interaction',
-        replacedTraits: ['v6', 'v7'],
-        text: 'Balance exploration with constraints',
-      },
-    ],
-  };
-
-  describe('XMLKernelRenderer', () => {
-    it('renders with XML tags', () => {
-      const renderer = new XMLKernelRenderer();
-      const output = renderer.render(kernelIR);
-
-      assert.ok(output.includes('<behavioral_constraints>'));
-      assert.ok(output.includes('</behavioral_constraints>'));
-      assert.ok(output.includes('<constraint id="v1">'));
-      assert.ok(output.includes('Strongly favor creative'));
-      assert.ok(output.includes('Moderately favor step-by-step'));
-    });
-
-    it('renders modified clauses', () => {
-      const renderer = new XMLKernelRenderer();
-      const output = renderer.render(kernelIR);
-
-      assert.ok(output.includes('<constraint id="test-interaction">'));
-      assert.ok(output.includes('Balance exploration with constraints'));
-    });
-  });
-
-  describe('MarkdownKernelRenderer', () => {
-    it('renders with Markdown format', () => {
-      const renderer = new MarkdownKernelRenderer();
-      const output = renderer.render(kernelIR);
-
-      assert.ok(output.includes('## Behavioral Constraints'));
-      assert.ok(output.includes('- **v1**:'));
-      assert.ok(output.includes('Strongly favor creative'));
-    });
-  });
-
-  describe('PlainTextKernelRenderer', () => {
-    it('renders as plain text', () => {
-      const renderer = new PlainTextKernelRenderer();
-      const output = renderer.render(kernelIR);
-
-      assert.ok(output.includes('Behavioral Constraints:'));
-      assert.ok(output.includes('v1: Strongly favor creative'));
     });
   });
 });

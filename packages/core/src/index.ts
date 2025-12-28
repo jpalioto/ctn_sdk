@@ -6,3 +6,6 @@ export * from './provider/index.js';
 
 // Re-export config module
 export * from './config/index.js';
+
+// Re-export renderer module
+export * from './renderer/index.js';

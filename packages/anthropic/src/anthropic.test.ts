@@ -285,7 +285,9 @@ describe('AnthropicProvider', () => {
       { name: 'precise', params: {}, traits: precise, features: {} },
     ]);
 
-    const kernel = provider.renderKernel(ir.kernelIR);
+    // Use project() to get the kernel - this uses capability negotiation
+    const config = provider.project(ir, 'sonnet');
+    const kernel = config.kernel;
 
     assert.ok(kernel.includes('<behavioral_constraints>'));
     assert.ok(kernel.includes('</behavioral_constraints>'));

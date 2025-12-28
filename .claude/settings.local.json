@@ -15,7 +15,12 @@
       "Bash(pnpm --filter @ctn/cli build:*)",
       "Bash(pnpm --filter @ctn/cli exec tsx:*)",
       "Bash(pnpm -r exec:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm --filter @ctn/language build:*)",
+      "Bash(pnpm --filter @ctn/core build:*)",
+      "Bash(ls:*)"
     ]
   }
 }

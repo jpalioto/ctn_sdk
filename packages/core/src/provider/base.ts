@@ -18,7 +18,6 @@ import type {
   SendOptions,
   ProviderResponse,
   StreamChunk,
-  KernelRenderer,
   FeatureClampEvent,
   OverrideCollision,
 } from './types.js';
@@ -43,22 +42,21 @@ import { resolveContextPolicy } from './context.js';
  * Provides common functionality:
  * - Projection matrix registration and validation
  * - Strategy version checking
- * - Kernel rendering delegation
+ * - Kernel rendering via strategy capabilities
  * - Feature clamping (post-projection)
  *
  * Subclasses must implement:
- * - kernelRenderer: Provider-specific kernel formatting
  * - send: Actual API call
  * - sendStream: Streaming API call
+ *
+ * Subclasses may override:
+ * - project: To use custom renderer negotiation (recommended)
  */
 export abstract class BaseCTNProvider implements CTNProvider {
   abstract readonly id: string;
   abstract readonly name: string;
   abstract readonly models: readonly ModelConfig[];
   abstract readonly supportedStrategies: readonly StrategySupport[];
-
-  /** Kernel renderer for this provider */
-  protected abstract readonly kernelRenderer: KernelRenderer;
 
   /** Registered projection matrices keyed by "strategyName@version" */
   protected readonly projections = new Map<string, ProjectionMatrix>();
@@ -171,8 +169,9 @@ export abstract class BaseCTNProvider implements CTNProvider {
     // Apply feature clamps (post-projection)
     const { clampedParams, clampEvents } = this.applyFeatureClamps(params, ir.features);
 
-    // Render kernel
-    const kernel = this.kernelRenderer.render(ir.kernelIR);
+    // Render kernel using strategy's renderPlain (base contract)
+    // Providers should override project() to use their preferred renderer via negotiation
+    const kernel = strategy.renderPlain(ir.kernelIR);
 
     return {
       model: modelId,
@@ -294,13 +293,6 @@ export abstract class BaseCTNProvider implements CTNProvider {
     }
 
     return { finalParams, collisions };
-  }
-
-  /**
-   * Renders a KernelIR to provider-specific format.
-   */
-  renderKernel(kernelIR: KernelIR): string {
-    return this.kernelRenderer.render(kernelIR);
   }
 
   /**

@@ -9,18 +9,11 @@ export type {
   FeatureClampEvent,
   OverrideCollision,
   TokenBudget,
-  KernelRenderer,
   CTNProvider,
   RequestSnapshot,
 } from './types.js';
 
 export { BaseCTNProvider } from './base.js';
-
-export {
-  XMLKernelRenderer,
-  MarkdownKernelRenderer,
-  PlainTextKernelRenderer,
-} from './renderers.js';
 
 export {
   ProviderError,

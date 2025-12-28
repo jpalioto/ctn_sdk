@@ -4,7 +4,6 @@ import * as assert from 'node:assert/strict';
 import { OperationalStrategy, Composer } from '@ctn/language';
 import {
   BaseCTNProvider,
-  XMLKernelRenderer,
   applyContextPolicy,
   type Message,
   type ModelConfig,
@@ -12,7 +11,6 @@ import {
   type ProjectedConfig,
   type ProviderResponse,
   type StreamChunk,
-  type KernelRenderer,
 } from './index.js';
 
 /**
@@ -43,8 +41,6 @@ class MockProvider extends BaseCTNProvider {
   readonly supportedStrategies: readonly StrategySupport[] = [
     { name: 'operational', versionRange: '1.x' },
   ];
-
-  protected readonly kernelRenderer: KernelRenderer = new XMLKernelRenderer();
 
   // Capture what would be sent
   public lastSystemPrompt: string = '';
@@ -109,9 +105,9 @@ describe('System Never Sliced Integration Test', () => {
     // Project the constraint
     const config = provider.project(constraint, 'mock-model');
 
-    // The kernel should contain behavioral constraints
+    // The kernel should contain behavioral constraints (plain text format from renderPlain())
     assert.ok(
-      config.kernel.includes('<behavioral_constraints>'),
+      config.kernel.includes('Behavioral Constraints:'),
       'Kernel should contain behavioral constraints'
     );
 
@@ -154,7 +150,7 @@ describe('System Never Sliced Integration Test', () => {
       'Kernel length should be unchanged'
     );
     assert.ok(
-      provider.lastSystemPrompt.includes('<behavioral_constraints>'),
+      provider.lastSystemPrompt.includes('Behavioral Constraints:'),
       'Full kernel should still contain behavioral constraints'
     );
 
@@ -281,15 +277,13 @@ describe('System Never Sliced Integration Test', () => {
 
     const config = provider.project(constraint, 'mock-model');
 
-    // The kernel should contain meaningful behavioral instructions
-    assert.ok(config.kernel.includes('<behavioral_constraints>'), 'Should have XML structure');
-    assert.ok(config.kernel.includes('</behavioral_constraints>'), 'Should have closing tag');
+    // The kernel should contain meaningful behavioral instructions (plain text format)
+    assert.ok(config.kernel.includes('Behavioral Constraints:'), 'Should have plain text header');
 
-    // Count constraints in kernel
-    const constraintMatches = config.kernel.match(/<constraint/g);
+    // Check that kernel has trait clauses (plain text lines with trait IDs)
     assert.ok(
-      constraintMatches && constraintMatches.length > 0,
-      'Kernel should contain at least one constraint'
+      config.kernel.includes('v1:') || config.kernel.includes('v5:'),
+      'Kernel should contain at least one trait constraint'
     );
 
     // Send with tiny context window but kernel should be unchanged

@@ -124,13 +124,6 @@ export interface TokenBudget {
 }
 
 /**
- * Kernel renderer interface for formatting KernelIR.
- */
-export interface KernelRenderer {
-  render(ir: KernelIR): string;
-}
-
-/**
  * Snapshot of a request for debugging and audit.
  *
  * Captures the complete state of a request before it's sent to the provider.
@@ -178,13 +171,9 @@ export interface CTNProvider {
 
   /**
    * Projects an abstract constraint to provider-specific configuration.
+   * Kernel rendering is handled internally via strategy capability negotiation.
    */
   project(ir: AbstractConstraint, model: string): ProjectedConfig;
-
-  /**
-   * Renders a KernelIR to provider-specific format.
-   */
-  renderKernel(kernelIR: KernelIR): string;
 
   /**
    * Sends a request to the provider.
