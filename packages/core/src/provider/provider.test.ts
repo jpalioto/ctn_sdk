@@ -128,6 +128,7 @@ describe('BaseCTNProvider', () => {
           name: 'unknown',
           version: '1.0.0',
           dimensions: [],
+          thresholds: { kernel: 0.3, interaction: 0.5 },
           identity: () => [],
           add: (a: number[]) => a,
           resolve: () => [],

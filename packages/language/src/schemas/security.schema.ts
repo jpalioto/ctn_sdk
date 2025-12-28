@@ -57,25 +57,44 @@ export function toParserOptions(security: SecurityOptions): {
 } {
   const { trustMode = 'trusted', boundaryDelimiters, allowedConstraints } = security;
 
+  // Build base result for each trust mode
   switch (trustMode) {
-    case 'untrusted':
-      return {
-        parseConstraints: false,
-        allowedConstraints,
-      };
+    case 'untrusted': {
+      const result: {
+        parseConstraints: boolean;
+        allowedConstraints?: readonly string[];
+      } = { parseConstraints: false };
+      if (allowedConstraints !== undefined) {
+        result.allowedConstraints = allowedConstraints;
+      }
+      return result;
+    }
 
-    case 'boundary':
-      return {
+    case 'boundary': {
+      const result: {
+        parseConstraints: boolean;
+        constraintBoundary: readonly [string, string];
+        allowedConstraints?: readonly string[];
+      } = {
         parseConstraints: true,
         constraintBoundary: boundaryDelimiters ?? DEFAULT_CONSTRAINT_BOUNDARY,
-        allowedConstraints,
       };
+      if (allowedConstraints !== undefined) {
+        result.allowedConstraints = allowedConstraints;
+      }
+      return result;
+    }
 
     case 'trusted':
-    default:
-      return {
-        parseConstraints: true,
-        allowedConstraints,
-      };
+    default: {
+      const result: {
+        parseConstraints: boolean;
+        allowedConstraints?: readonly string[];
+      } = { parseConstraints: true };
+      if (allowedConstraints !== undefined) {
+        result.allowedConstraints = allowedConstraints;
+      }
+      return result;
+    }
   }
 }

@@ -30,7 +30,7 @@ function resolveConfigPath(): string {
   }
 
   // Fallback - return first candidate and let loadModelsConfig handle the error
-  return candidates[0];
+  return candidates[0]!;
 }
 
 const CONFIG_PATH = resolveConfigPath();

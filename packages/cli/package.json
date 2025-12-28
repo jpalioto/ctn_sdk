@@ -1,0 +1,39 @@
+{
+  "name": "@ctn/cli",
+  "version": "1.0.0",
+  "description": "Command-line interface for CTN SDK",
+  "type": "module",
+  "bin": {
+    "ctn": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "dev": "tsx src/cli.ts"
+  },
+  "keywords": [
+    "ctn",
+    "cli",
+    "llm",
+    "constraints"
+  ],
+  "author": "John P Alioto",
+  "license": "MIT",
+  "dependencies": {
+    "@ctn/anthropic": "workspace:*",
+    "@ctn/core": "workspace:*",
+    "@ctn/language": "workspace:*",
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

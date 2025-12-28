@@ -11,7 +11,9 @@
       "Bash(pnpm -r build:*)",
       "Bash(npx husky init)",
       "Bash(chmod:*)",
-      "Bash(./scripts/check-secrets.sh:*)"
+      "Bash(./scripts/check-secrets.sh:*)",
+      "Bash(pnpm --filter @ctn/cli build:*)",
+      "Bash(pnpm --filter @ctn/cli exec tsx:*)"
     ]
   }
 }
