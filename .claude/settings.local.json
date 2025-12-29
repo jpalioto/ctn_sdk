@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --test:*)",
+      "Bash(pnpm add:*)",
+      "Bash(npx tsx:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm build:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm -r test:*)",
+      "Bash(pnpm -r build:*)",
+      "Bash(npx husky init)",
+      "Bash(chmod:*)",
+      "Bash(./scripts/check-secrets.sh:*)",
+      "Bash(pnpm --filter @ctn/cli build:*)",
+      "Bash(pnpm --filter @ctn/cli exec tsx:*)",
+      "Bash(pnpm -r exec:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm --filter @ctn/language build:*)",
+      "Bash(pnpm --filter @ctn/core build:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(pnpm --filter @ctn/cli test)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm --filter @ctn/language test)",
+      "Bash(pnpm --filter @ctn/core test:*)",
+      "Bash(git rm:*)",
+      "Bash(pnpm --filter @ctn/google test:*)",
+      "Bash(pnpm docs:*)",
+      "Bash(npx typedoc)",
+      "Bash(pnpm --filter @ctn/openai test)"
+    ]
+  }
+}

@@ -19,3 +19,4 @@ dist/
 
 # Claude Code user settings
 .claude/settings.local.jsonpackages/*/tsconfig.tsbuildinfo
+docs/api/
