@@ -1,6 +1,15 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { createServer, startServer, ProviderPool, RequestQueue } from './serve.js';
+import {
+  createServer,
+  startServer,
+  ProviderPool,
+  RequestQueue,
+  isRetryable,
+  withRetry,
+  defaultRetryConfig,
+  type RetryableError,
+} from './serve.js';
 import type { FastifyInstance } from 'fastify';
 
 describe('serve command', () => {
@@ -615,6 +624,243 @@ describe('serve command', () => {
       server = createServer({ queue, concurrency: 1 });
 
       assert.strictEqual(queue.concurrencyLimit, 1);
+    });
+  });
+
+  describe('isRetryable', () => {
+    it('returns true for 429 rate limit error', () => {
+      const error: RetryableError = new Error('Rate limited');
+      error.status = 429;
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns true for 502 bad gateway error', () => {
+      const error: RetryableError = new Error('Bad Gateway');
+      error.status = 502;
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns true for 503 service unavailable error', () => {
+      const error: RetryableError = new Error('Service Unavailable');
+      error.status = 503;
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns true for ECONNRESET network error', () => {
+      const error: RetryableError = new Error('Connection reset');
+      error.code = 'ECONNRESET';
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns true for ETIMEDOUT network error', () => {
+      const error: RetryableError = new Error('Connection timed out');
+      error.code = 'ETIMEDOUT';
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns true for ECONNREFUSED network error', () => {
+      const error: RetryableError = new Error('Connection refused');
+      error.code = 'ECONNREFUSED';
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns true for 500 server error', () => {
+      const error: RetryableError = new Error('Internal Server Error');
+      error.status = 500;
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns false for 400 bad request error', () => {
+      const error: RetryableError = new Error('Bad Request');
+      error.status = 400;
+      assert.strictEqual(isRetryable(error), false);
+    });
+
+    it('returns false for 401 unauthorized error', () => {
+      const error: RetryableError = new Error('Unauthorized');
+      error.status = 401;
+      assert.strictEqual(isRetryable(error), false);
+    });
+
+    it('returns false for 403 forbidden error', () => {
+      const error: RetryableError = new Error('Forbidden');
+      error.status = 403;
+      assert.strictEqual(isRetryable(error), false);
+    });
+
+    it('returns false for 404 not found error', () => {
+      const error: RetryableError = new Error('Not Found');
+      error.status = 404;
+      assert.strictEqual(isRetryable(error), false);
+    });
+
+    it('uses statusCode property if status not present', () => {
+      const error: RetryableError = new Error('Rate limited');
+      error.statusCode = 429;
+      assert.strictEqual(isRetryable(error), true);
+    });
+
+    it('returns false for unknown errors', () => {
+      const error: RetryableError = new Error('Unknown error');
+      assert.strictEqual(isRetryable(error), false);
+    });
+  });
+
+  describe('withRetry', () => {
+    it('returns result on success without retry', async () => {
+      let attempts = 0;
+      const result = await withRetry(
+        async () => {
+          attempts++;
+          return 'success';
+        },
+        'anthropic',
+        { ...defaultRetryConfig, retries: 3 }
+      );
+
+      assert.strictEqual(result, 'success');
+      assert.strictEqual(attempts, 1);
+    });
+
+    it('retries on retryable error and succeeds', async () => {
+      let attempts = 0;
+      const result = await withRetry(
+        async () => {
+          attempts++;
+          if (attempts < 3) {
+            const error: RetryableError = new Error('Rate limited');
+            error.status = 429;
+            throw error;
+          }
+          return 'success after retry';
+        },
+        'anthropic',
+        { ...defaultRetryConfig, retries: 3, minTimeout: 10, maxTimeout: 50 }
+      );
+
+      assert.strictEqual(result, 'success after retry');
+      assert.strictEqual(attempts, 3);
+    });
+
+    it('does not retry on non-retryable error', async () => {
+      let attempts = 0;
+
+      await assert.rejects(
+        async () => {
+          await withRetry(
+            async () => {
+              attempts++;
+              const error: RetryableError = new Error('Bad Request');
+              error.status = 400;
+              throw error;
+            },
+            'anthropic',
+            { ...defaultRetryConfig, retries: 3, minTimeout: 10 }
+          );
+        },
+        (error: Error) => {
+          assert.ok(error.message.includes('Bad Request'));
+          return true;
+        }
+      );
+
+      assert.strictEqual(attempts, 1);
+    });
+
+    it('respects max retries limit', async () => {
+      let attempts = 0;
+
+      await assert.rejects(
+        async () => {
+          await withRetry(
+            async () => {
+              attempts++;
+              const error: RetryableError = new Error('Service Unavailable');
+              error.status = 503;
+              throw error;
+            },
+            'anthropic',
+            { ...defaultRetryConfig, retries: 2, minTimeout: 10, maxTimeout: 50 }
+          );
+        },
+        (error: Error) => {
+          assert.ok(error.message.includes('Service Unavailable'));
+          return true;
+        }
+      );
+
+      // Initial attempt + 2 retries = 3 total
+      assert.strictEqual(attempts, 3);
+    });
+
+    it('calls onRetry callback on failed attempts', async () => {
+      const retryAttempts: number[] = [];
+
+      await assert.rejects(
+        async () => {
+          await withRetry(
+            async () => {
+              const error: RetryableError = new Error('Rate limited');
+              error.status = 429;
+              throw error;
+            },
+            'anthropic',
+            {
+              ...defaultRetryConfig,
+              retries: 2,
+              minTimeout: 10,
+              maxTimeout: 50,
+              onRetry: (error) => {
+                retryAttempts.push(error.attemptNumber);
+              },
+            }
+          );
+        }
+      );
+
+      // p-retry calls onFailedAttempt after each failed attempt
+      // With retries=2: initial (1) + retry (2) + retry (3) = 3 total attempts
+      assert.deepStrictEqual(retryAttempts, [1, 2, 3]);
+    });
+  });
+
+  describe('server with retry config', () => {
+    let server: FastifyInstance;
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('accepts custom retry configuration', async () => {
+      server = createServer({
+        retry: {
+          retries: 5,
+          minTimeout: 500,
+          maxTimeout: 10000,
+        },
+      });
+
+      // Server should be created successfully with custom config
+      const response = await server.inject({
+        method: 'GET',
+        url: '/health',
+      });
+
+      assert.strictEqual(response.statusCode, 200);
+    });
+
+    it('uses default retry config when not specified', async () => {
+      server = createServer();
+
+      // Server should work with defaults
+      const response = await server.inject({
+        method: 'POST',
+        url: '/send',
+        payload: { input: 'Hello', dryRun: true },
+        headers: { 'content-type': 'application/json' },
+      });
+
+      assert.strictEqual(response.statusCode, 200);
     });
   });
 });

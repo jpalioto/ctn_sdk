@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import PQueue from 'p-queue';
+import pRetry, { AbortError, type FailedAttemptError } from 'p-retry';
 import { processSend, type SendResult, type DryRunResult } from './send.js';
 import { AnthropicProvider } from '@ctn/anthropic';
 import { GoogleProvider } from '@ctn/google';
@@ -8,7 +9,77 @@ import type { BaseCTNProvider } from '@ctn/core';
 
 const DEFAULT_PORT = 14380;
 const DEFAULT_CONCURRENCY = 5;
+const DEFAULT_RETRIES = 3;
+const DEFAULT_MIN_TIMEOUT = 1000; // 1 second
+const DEFAULT_MAX_TIMEOUT = 30000; // 30 seconds
 const VERSION = '1.0.0';
+
+/**
+ * Error with HTTP status code for retry classification.
+ */
+export interface RetryableError extends Error {
+  status?: number;
+  statusCode?: number;
+  code?: string;
+}
+
+/**
+ * Determines if an error is retryable (transient) or permanent.
+ * Retries: 429 (rate limit), 502/503 (service unavailable), network errors
+ * No retry: 400, 401, 403, 404 (client errors - won't help to retry)
+ */
+export function isRetryable(error: RetryableError): boolean {
+  const status = error.status ?? error.statusCode;
+
+  // Rate limiting and service unavailable - retry
+  if (status === 429 || status === 502 || status === 503) {
+    return true;
+  }
+
+  // Network errors - retry
+  if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ECONNREFUSED') {
+    return true;
+  }
+
+  // Client errors - don't retry
+  if (status && status >= 400 && status < 500) {
+    return false;
+  }
+
+  // Server errors (5xx) other than 502/503 - retry
+  if (status && status >= 500) {
+    return true;
+  }
+
+  // Unknown errors - don't retry by default
+  return false;
+}
+
+/**
+ * Configuration for retry behavior.
+ */
+export interface RetryConfig {
+  /** Maximum number of retry attempts. Default: 3 */
+  retries: number;
+  /** Minimum delay between retries in ms. Default: 1000 */
+  minTimeout: number;
+  /** Maximum delay between retries in ms. Default: 30000 */
+  maxTimeout: number;
+  /** Add randomization to delays (jitter). Default: true */
+  randomize: boolean;
+  /** Callback for failed attempts (for logging). Optional. */
+  onRetry?: (error: FailedAttemptError, provider: string) => void;
+}
+
+/**
+ * Default retry configuration.
+ */
+export const defaultRetryConfig: RetryConfig = {
+  retries: DEFAULT_RETRIES,
+  minTimeout: DEFAULT_MIN_TIMEOUT,
+  maxTimeout: DEFAULT_MAX_TIMEOUT,
+  randomize: true,
+};
 
 /**
  * Provider pool with lazy initialization.
@@ -185,6 +256,42 @@ export class RequestQueue {
   }
 }
 
+/**
+ * Wraps a task with retry logic for transient failures.
+ * Uses exponential backoff with jitter to prevent thundering herd.
+ */
+export async function withRetry<T>(
+  task: () => Promise<T>,
+  provider: string,
+  config: RetryConfig = defaultRetryConfig
+): Promise<T> {
+  return pRetry(
+    async () => {
+      try {
+        return await task();
+      } catch (error) {
+        // Check if error is retryable
+        if (!isRetryable(error as RetryableError)) {
+          // Wrap in AbortError to stop retrying
+          throw new AbortError((error as Error).message);
+        }
+        throw error;
+      }
+    },
+    {
+      retries: config.retries,
+      minTimeout: config.minTimeout,
+      maxTimeout: config.maxTimeout,
+      randomize: config.randomize,
+      onFailedAttempt: (error) => {
+        if (config.onRetry) {
+          config.onRetry(error, provider);
+        }
+      },
+    }
+  );
+}
+
 export interface ServeOptions {
   port?: number;
 }
@@ -233,6 +340,8 @@ export interface CreateServerOptions {
   queue?: RequestQueue;
   /** Concurrency limit per provider. Only used if queue not provided. */
   concurrency?: number;
+  /** Retry configuration for transient failures. Uses defaults if not provided. */
+  retry?: Partial<RetryConfig>;
 }
 
 /**
@@ -241,6 +350,7 @@ export interface CreateServerOptions {
 export function createServer(options: CreateServerOptions = {}): FastifyInstance {
   const pool = options.pool ?? new ProviderPool();
   const queue = options.queue ?? new RequestQueue(options.concurrency);
+  const retryConfig: RetryConfig = { ...defaultRetryConfig, ...options.retry };
 
   const server = Fastify({
     logger: false,
@@ -272,15 +382,20 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       const providerName = body.provider ?? 'anthropic';
       const providerInstance = pool.get(providerName);
 
-      // Route request through the provider's queue for concurrency control
+      // Route request through queue with retry for transient failures
       const response = await queue.add(providerName, () =>
-        processSend(body.input, {
-          provider: providerName,
-          model: body.model,
-          strategy: body.strategy,
-          dryRun: body.dryRun,
-          providerInstance,
-        })
+        withRetry(
+          () =>
+            processSend(body.input, {
+              provider: providerName,
+              model: body.model,
+              strategy: body.strategy,
+              dryRun: body.dryRun,
+              providerInstance,
+            }),
+          providerName,
+          retryConfig
+        )
       );
 
       // Return dry-run response
@@ -311,6 +426,8 @@ export interface StartServerOptions extends ServeOptions {
   queue?: RequestQueue;
   /** Concurrency limit per provider. Only used if queue not provided. */
   concurrency?: number;
+  /** Retry configuration for transient failures. */
+  retry?: Partial<RetryConfig>;
 }
 
 /**
@@ -319,9 +436,17 @@ export interface StartServerOptions extends ServeOptions {
 export async function startServer(options: StartServerOptions = {}): Promise<FastifyInstance> {
   const port = options.port ?? DEFAULT_PORT;
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
+  const retries = options.retry?.retries ?? DEFAULT_RETRIES;
   const pool = options.pool ?? new ProviderPool();
   const queue = options.queue ?? new RequestQueue(concurrency);
-  const server = createServer({ pool, queue });
+  const retryConfig: Partial<RetryConfig> = {
+    ...options.retry,
+    // Add default logging for retries
+    onRetry: options.retry?.onRetry ?? ((error, provider) => {
+      console.log(`[${provider}] Retry attempt ${error.attemptNumber}/${retries}: ${error.message}`);
+    }),
+  };
+  const server = createServer({ pool, queue, retry: retryConfig });
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
@@ -337,6 +462,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   console.log(`CTN server listening on http://localhost:${port}`);
   console.log(`Health check: http://localhost:${port}/health`);
   console.log(`Concurrency limit: ${concurrency} per provider`);
+  console.log(`Retry attempts: ${retries} (exponential backoff with jitter)`);
 
   return server;
 }
@@ -344,9 +470,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
 /**
  * Serve command action for Commander.
  */
-export async function serveAction(options: { port?: string; concurrency?: string }): Promise<void> {
+export async function serveAction(options: { port?: string; concurrency?: string; retries?: string }): Promise<void> {
   const port = options.port ? parseInt(options.port, 10) : undefined;
   const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : undefined;
+  const retries = options.retries ? parseInt(options.retries, 10) : undefined;
 
   if (port !== undefined && (isNaN(port) || port < 1 || port > 65535)) {
     console.error('Error: Port must be a number between 1 and 65535');
@@ -358,5 +485,10 @@ export async function serveAction(options: { port?: string; concurrency?: string
     process.exit(1);
   }
 
-  await startServer({ port, concurrency });
+  if (retries !== undefined && (isNaN(retries) || retries < 0)) {
+    console.error('Error: Retries must be a non-negative number');
+    process.exit(1);
+  }
+
+  await startServer({ port, concurrency, retry: retries !== undefined ? { retries } : undefined });
 }

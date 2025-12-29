@@ -29,6 +29,7 @@ program
   .description('Start the CTN HTTP server')
   .option('--port <port>', 'Port to listen on', '14380')
   .option('--concurrency <n>', 'Max concurrent requests per provider', '5')
+  .option('--retries <n>', 'Max retry attempts for transient failures', '3')
   .action(serveAction);
 
 program.parse();
