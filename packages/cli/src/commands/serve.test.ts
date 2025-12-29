@@ -5,10 +5,14 @@ import {
   startServer,
   ProviderPool,
   RequestQueue,
+  ServerStats,
   isRetryable,
   withRetry,
   defaultRetryConfig,
+  silentLogger,
   type RetryableError,
+  type RequestLogger,
+  type RequestLogEntry,
 } from './serve.js';
 import type { FastifyInstance } from 'fastify';
 
@@ -861,6 +865,221 @@ describe('serve command', () => {
       });
 
       assert.strictEqual(response.statusCode, 200);
+    });
+  });
+
+  describe('ServerStats', () => {
+    it('starts with zero counts', () => {
+      const stats = new ServerStats();
+      const requestStats = stats.getRequestStats();
+
+      assert.strictEqual(requestStats.total, 0);
+      assert.strictEqual(requestStats.success, 0);
+      assert.strictEqual(requestStats.error, 0);
+    });
+
+    it('tracks successful requests', () => {
+      const stats = new ServerStats();
+
+      stats.recordRequest('/send', 200, 'anthropic');
+      stats.recordRequest('/health', 200);
+
+      const requestStats = stats.getRequestStats();
+      assert.strictEqual(requestStats.total, 2);
+      assert.strictEqual(requestStats.success, 2);
+      assert.strictEqual(requestStats.error, 0);
+    });
+
+    it('tracks error requests', () => {
+      const stats = new ServerStats();
+
+      stats.recordRequest('/send', 400, 'anthropic');
+      stats.recordRequest('/send', 500, 'google');
+
+      const requestStats = stats.getRequestStats();
+      assert.strictEqual(requestStats.total, 2);
+      assert.strictEqual(requestStats.success, 0);
+      assert.strictEqual(requestStats.error, 2);
+    });
+
+    it('tracks requests by path', () => {
+      const stats = new ServerStats();
+
+      stats.recordRequest('/send', 200);
+      stats.recordRequest('/send', 200);
+      stats.recordRequest('/health', 200);
+
+      const byPath = stats.getRequestsByPath();
+      assert.strictEqual(byPath['/send'], 2);
+      assert.strictEqual(byPath['/health'], 1);
+    });
+
+    it('tracks requests by provider', () => {
+      const stats = new ServerStats();
+
+      stats.recordRequest('/send', 200, 'anthropic');
+      stats.recordRequest('/send', 200, 'anthropic');
+      stats.recordRequest('/send', 200, 'google');
+
+      const byProvider = stats.getRequestsByProvider();
+      assert.strictEqual(byProvider['anthropic'], 2);
+      assert.strictEqual(byProvider['google'], 1);
+    });
+
+    it('tracks uptime', async () => {
+      const stats = new ServerStats();
+      const initialUptime = stats.uptimeMs;
+
+      await new Promise((r) => setTimeout(r, 10));
+
+      assert.ok(stats.uptimeMs > initialUptime);
+    });
+
+    it('can be reset', () => {
+      const stats = new ServerStats();
+
+      stats.recordRequest('/send', 200, 'anthropic');
+      stats.recordRequest('/health', 200);
+      stats.reset();
+
+      const requestStats = stats.getRequestStats();
+      assert.strictEqual(requestStats.total, 0);
+      assert.deepStrictEqual(stats.getRequestsByPath(), {});
+      assert.deepStrictEqual(stats.getRequestsByProvider(), {});
+    });
+  });
+
+  describe('/stats endpoint', () => {
+    let server: FastifyInstance;
+    let stats: ServerStats;
+
+    beforeEach(() => {
+      stats = new ServerStats();
+      server = createServer({ stats, logger: silentLogger });
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('returns stats structure', async () => {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/stats',
+      });
+
+      assert.strictEqual(response.statusCode, 200);
+      const body = JSON.parse(response.body);
+
+      assert.ok('uptime_ms' in body);
+      assert.ok('requests' in body);
+      assert.ok('requests_by_path' in body);
+      assert.ok('requests_by_provider' in body);
+      assert.ok('queues' in body);
+    });
+
+    it('tracks requests across endpoints', async () => {
+      // Make some requests
+      await server.inject({ method: 'GET', url: '/health' });
+      await server.inject({
+        method: 'POST',
+        url: '/send',
+        payload: { input: 'Hello', dryRun: true },
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const response = await server.inject({ method: 'GET', url: '/stats' });
+      const body = JSON.parse(response.body);
+
+      // Note: /stats itself adds to the count
+      assert.ok(body.requests.total >= 2);
+      assert.ok(body.requests_by_path['/health'] >= 1);
+      assert.ok(body.requests_by_path['/send'] >= 1);
+    });
+
+    it('includes queue stats', async () => {
+      // Make a request to create a queue
+      await server.inject({
+        method: 'POST',
+        url: '/send',
+        payload: { input: 'Hello', provider: 'anthropic', dryRun: true },
+        headers: { 'content-type': 'application/json' },
+      });
+
+      const response = await server.inject({ method: 'GET', url: '/stats' });
+      const body = JSON.parse(response.body);
+
+      // Queue should exist for anthropic
+      assert.ok('anthropic' in body.queues);
+      assert.ok('waiting' in body.queues.anthropic);
+      assert.ok('running' in body.queues.anthropic);
+    });
+  });
+
+  describe('request logging', () => {
+    let server: FastifyInstance;
+    let logEntries: RequestLogEntry[];
+    let testLogger: RequestLogger;
+
+    beforeEach(() => {
+      logEntries = [];
+      testLogger = {
+        log(entry: RequestLogEntry) {
+          logEntries.push(entry);
+        },
+      };
+      server = createServer({ logger: testLogger });
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('logs requests with timing', async () => {
+      await server.inject({
+        method: 'GET',
+        url: '/health',
+      });
+
+      assert.strictEqual(logEntries.length, 1);
+      const entry = logEntries[0];
+
+      assert.strictEqual(entry.method, 'GET');
+      assert.strictEqual(entry.path, '/health');
+      assert.strictEqual(entry.status, 200);
+      assert.ok(entry.duration_ms >= 0);
+      assert.ok(entry.timestamp);
+    });
+
+    it('logs provider for /send requests', async () => {
+      await server.inject({
+        method: 'POST',
+        url: '/send',
+        payload: { input: 'Hello', provider: 'google', dryRun: true },
+        headers: { 'content-type': 'application/json' },
+      });
+
+      assert.strictEqual(logEntries.length, 1);
+      assert.strictEqual(logEntries[0].provider, 'google');
+    });
+
+    it('logs error responses', async () => {
+      await server.inject({
+        method: 'POST',
+        url: '/send',
+        payload: {},
+        headers: { 'content-type': 'application/json' },
+      });
+
+      assert.strictEqual(logEntries.length, 1);
+      assert.strictEqual(logEntries[0].status, 400);
+    });
+
+    it('does not log /stats requests', async () => {
+      await server.inject({ method: 'GET', url: '/stats' });
+
+      // /stats should not be logged to avoid noise
+      assert.strictEqual(logEntries.length, 0);
     });
   });
 });

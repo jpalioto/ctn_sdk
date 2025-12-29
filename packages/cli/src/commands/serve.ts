@@ -82,6 +82,122 @@ export const defaultRetryConfig: RetryConfig = {
 };
 
 /**
+ * Request log entry for structured logging.
+ */
+export interface RequestLogEntry {
+  timestamp: string;
+  method: string;
+  path: string;
+  status: number;
+  duration_ms: number;
+  provider?: string;
+}
+
+/**
+ * Server statistics for observability.
+ */
+export class ServerStats {
+  private startTime: number = Date.now();
+  private totalRequests: number = 0;
+  private successRequests: number = 0;
+  private errorRequests: number = 0;
+  private requestsByPath: Map<string, number> = new Map();
+  private requestsByProvider: Map<string, number> = new Map();
+
+  /**
+   * Records a completed request.
+   */
+  recordRequest(path: string, status: number, provider?: string): void {
+    this.totalRequests++;
+
+    if (status >= 200 && status < 400) {
+      this.successRequests++;
+    } else {
+      this.errorRequests++;
+    }
+
+    // Track by path
+    const pathCount = this.requestsByPath.get(path) ?? 0;
+    this.requestsByPath.set(path, pathCount + 1);
+
+    // Track by provider
+    if (provider) {
+      const providerCount = this.requestsByProvider.get(provider) ?? 0;
+      this.requestsByProvider.set(provider, providerCount + 1);
+    }
+  }
+
+  /**
+   * Returns server uptime in milliseconds.
+   */
+  get uptimeMs(): number {
+    return Date.now() - this.startTime;
+  }
+
+  /**
+   * Returns request statistics.
+   */
+  getRequestStats(): { total: number; success: number; error: number } {
+    return {
+      total: this.totalRequests,
+      success: this.successRequests,
+      error: this.errorRequests,
+    };
+  }
+
+  /**
+   * Returns request counts by path.
+   */
+  getRequestsByPath(): Record<string, number> {
+    return Object.fromEntries(this.requestsByPath);
+  }
+
+  /**
+   * Returns request counts by provider.
+   */
+  getRequestsByProvider(): Record<string, number> {
+    return Object.fromEntries(this.requestsByProvider);
+  }
+
+  /**
+   * Resets all statistics.
+   */
+  reset(): void {
+    this.startTime = Date.now();
+    this.totalRequests = 0;
+    this.successRequests = 0;
+    this.errorRequests = 0;
+    this.requestsByPath.clear();
+    this.requestsByProvider.clear();
+  }
+}
+
+/**
+ * Logger interface for request logging.
+ */
+export interface RequestLogger {
+  log(entry: RequestLogEntry): void;
+}
+
+/**
+ * Default JSON logger that outputs to console.
+ */
+export const jsonLogger: RequestLogger = {
+  log(entry: RequestLogEntry): void {
+    console.log(JSON.stringify(entry));
+  },
+};
+
+/**
+ * Silent logger for testing.
+ */
+export const silentLogger: RequestLogger = {
+  log(): void {
+    // No-op
+  },
+};
+
+/**
  * Provider pool with lazy initialization.
  * Creates provider instances on first access, then reuses them.
  */
@@ -333,6 +449,18 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface StatsResponse {
+  uptime_ms: number;
+  requests: {
+    total: number;
+    success: number;
+    error: number;
+  };
+  requests_by_path: Record<string, number>;
+  requests_by_provider: Record<string, number>;
+  queues: Record<string, { waiting: number; running: number }>;
+}
+
 export interface CreateServerOptions {
   /** Provider pool for client reuse. Created if not provided. */
   pool?: ProviderPool;
@@ -342,6 +470,18 @@ export interface CreateServerOptions {
   concurrency?: number;
   /** Retry configuration for transient failures. Uses defaults if not provided. */
   retry?: Partial<RetryConfig>;
+  /** Server statistics tracker. Created if not provided. */
+  stats?: ServerStats;
+  /** Request logger. Uses silent logger if not provided. */
+  logger?: RequestLogger;
+}
+
+// Extend Fastify request to include timing info
+declare module 'fastify' {
+  interface FastifyRequest {
+    startTime?: number;
+    provider?: string;
+  }
 }
 
 /**
@@ -351,9 +491,37 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   const pool = options.pool ?? new ProviderPool();
   const queue = options.queue ?? new RequestQueue(options.concurrency);
   const retryConfig: RetryConfig = { ...defaultRetryConfig, ...options.retry };
+  const stats = options.stats ?? new ServerStats();
+  const logger = options.logger ?? silentLogger;
 
   const server = Fastify({
     logger: false,
+  });
+
+  // Request timing hook - start timer
+  server.addHook('onRequest', async (request) => {
+    request.startTime = Date.now();
+  });
+
+  // Response logging hook - log completed requests
+  server.addHook('onResponse', async (request, reply) => {
+    const duration = request.startTime ? Date.now() - request.startTime : 0;
+    const path = request.url.split('?')[0]; // Remove query string
+
+    // Record stats
+    stats.recordRequest(path, reply.statusCode, request.provider);
+
+    // Log request (skip /stats to avoid noise)
+    if (path !== '/stats') {
+      logger.log({
+        timestamp: new Date().toISOString(),
+        method: request.method,
+        path,
+        status: reply.statusCode,
+        duration_ms: duration,
+        provider: request.provider,
+      });
+    }
   });
 
   // Health endpoint
@@ -361,6 +529,17 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
     return {
       status: 'ok',
       version: VERSION,
+    };
+  });
+
+  // Stats endpoint
+  server.get<{ Reply: StatsResponse }>('/stats', async () => {
+    return {
+      uptime_ms: stats.uptimeMs,
+      requests: stats.getRequestStats(),
+      requests_by_path: stats.getRequestsByPath(),
+      requests_by_provider: stats.getRequestsByProvider(),
+      queues: queue.stats(),
     };
   });
 
@@ -381,6 +560,9 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       // Get provider from pool (reuses existing instance)
       const providerName = body.provider ?? 'anthropic';
       const providerInstance = pool.get(providerName);
+
+      // Store provider for logging
+      request.provider = providerName;
 
       // Route request through queue with retry for transient failures
       const response = await queue.add(providerName, () =>
@@ -428,6 +610,10 @@ export interface StartServerOptions extends ServeOptions {
   concurrency?: number;
   /** Retry configuration for transient failures. */
   retry?: Partial<RetryConfig>;
+  /** Server statistics tracker. Created if not provided. */
+  stats?: ServerStats;
+  /** Request logger. Uses JSON logger if not provided. */
+  logger?: RequestLogger;
 }
 
 /**
@@ -439,14 +625,22 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   const retries = options.retry?.retries ?? DEFAULT_RETRIES;
   const pool = options.pool ?? new ProviderPool();
   const queue = options.queue ?? new RequestQueue(concurrency);
+  const stats = options.stats ?? new ServerStats();
+  const logger = options.logger ?? jsonLogger; // Use JSON logger in production
   const retryConfig: Partial<RetryConfig> = {
     ...options.retry,
     // Add default logging for retries
     onRetry: options.retry?.onRetry ?? ((error, provider) => {
-      console.log(`[${provider}] Retry attempt ${error.attemptNumber}/${retries}: ${error.message}`);
+      console.log(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        message: `Retry attempt ${error.attemptNumber}/${retries}`,
+        provider,
+        error: error.message,
+      }));
     }),
   };
-  const server = createServer({ pool, queue, retry: retryConfig });
+  const server = createServer({ pool, queue, retry: retryConfig, stats, logger });
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
@@ -461,6 +655,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   await server.listen({ port, host: '0.0.0.0' });
   console.log(`CTN server listening on http://localhost:${port}`);
   console.log(`Health check: http://localhost:${port}/health`);
+  console.log(`Stats: http://localhost:${port}/stats`);
   console.log(`Concurrency limit: ${concurrency} per provider`);
   console.log(`Retry attempts: ${retries} (exponential backoff with jitter)`);
 
