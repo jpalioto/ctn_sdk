@@ -18,4 +18,4 @@ dist/
 *.swo
 
 # Claude Code user settings
-.claude/settings.local.json
+.claude/settings.local.jsonpackages/*/tsconfig.tsbuildinfo

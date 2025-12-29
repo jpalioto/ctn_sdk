@@ -59,34 +59,69 @@ packages/openai/
 
 ### 2. Models Config
 
-```yaml
-# config/models.yaml
-provider: openai
+```typescript
+// src/models.ts
+import type { ModelConfig } from '@ctn/core';
 
-models:
-  - id: gpt-4o
-    aliases: [gpt4o, 4o]
-    contextWindow: 128000
-    defaultMaxTokens: 4096
-    capabilities:
-      thinking: false
-      streaming: true
+export interface OpenAIModelConfig extends ModelConfig {
+  maxOutput: number;
+}
 
-  - id: gpt-4o-mini
-    aliases: [mini, 4o-mini]
-    contextWindow: 128000
-    defaultMaxTokens: 4096
-    capabilities:
-      thinking: false
-      streaming: true
+export const OPENAI_MODELS: Record<string, OpenAIModelConfig> = {
+  'gpt-5.2': {
+    id: 'gpt-5.2',
+    name: 'GPT-5.2',
+    contextWindow: 400000,
+    defaultMaxTokens: 128000,
+    maxOutput: 128000,
+    supportsStreaming: true,
+  },
+  'gpt-5.2-pro': {
+    id: 'gpt-5.2-pro',
+    name: 'GPT-5.2 Pro',
+    contextWindow: 400000,
+    defaultMaxTokens: 128000,
+    maxOutput: 128000,
+    supportsStreaming: true,
+    supportsThinking: true,
+  },
+  'gpt-5-mini': {
+    id: 'gpt-5-mini',
+    name: 'GPT-5 Mini',
+    contextWindow: 128000,
+    defaultMaxTokens: 32768,
+    maxOutput: 32768,
+    supportsStreaming: true,
+  },
+};
+
+export const MODEL_ALIASES: Record<string, string> = {
+  gpt: 'gpt-5.2',
+  'gpt-mini': 'gpt-5-mini',
+};
+
+export const DEFAULT_MODEL = 'gpt-5-mini';
 ```
 
 ### 3. Provider Implementation
 
+OpenAI GPT-5 models use the **Responses API** (not Chat Completions):
+
 ```typescript
 // src/provider.ts
-import { BaseCTNProvider, ProjectedConfig, Message, ProviderResponse } from '@ctn/core';
 import OpenAI from 'openai';
+import { OperationalStrategy, CTNStrategy } from '@ctn/language';
+import {
+  BaseCTNProvider,
+  renderKernel,
+  projectTraits,
+  type ProjectedConfig,
+  type Message,
+  type ProviderResponse,
+} from '@ctn/core';
+import { OPENAI_MODELS, resolveModelId } from './models.js';
+import { OPERATIONAL_PROJECTION_MATRIX } from './projection.js';
+import { openaiRendererPreferences } from './renderer-preferences.js';
 
 export class OpenAIProvider extends BaseCTNProvider {
   readonly id = 'openai';
@@ -99,95 +134,125 @@ export class OpenAIProvider extends BaseCTNProvider {
     this.client = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
-    this.registerOperationalProjection();
+
+    // Register projection matrices
+    const operationalStrategy = new OperationalStrategy();
+    this.registerProjection(operationalStrategy, OPERATIONAL_PROJECTION_MATRIX);
   }
 
-  private registerOperationalProjection(): void {
-    this.registerProjection('operational', '1.0.0', {
-      baseline: {
-        temperature: 1.0,
-        top_p: 1.0,
-        frequency_penalty: 0.0,
-        presence_penalty: 0.0,
-      },
-      weights: {
-        // [v1, v2, v3, v4, v5, v6, v7]
-        temperature:       [0.6,  0,   0,   0,  -0.4, -0.2, 0],
-        top_p:             [0.2,  0,   0,   0,  -0.1, -0.1, 0],
-        frequency_penalty: [0,    0.3, 0,   0,   0,    0,   0],
-        presence_penalty:  [0.2,  0,   0.2, 0,   0,    0,   0],
-      },
-      scale: {
-        temperature: 0.5,
-        top_p: 0.1,
-        frequency_penalty: 0.5,
-        presence_penalty: 0.5,
-      },
-      clamps: {
-        temperature: [0, 2],
-        top_p: [0, 1],
-        frequency_penalty: [0, 2],
-        presence_penalty: [0, 2],
-      },
-    });
-  }
+  async send(
+    config: ProjectedConfig,
+    messages: readonly Message[]
+  ): Promise<ProviderResponse> {
+    const modelId = resolveModelId(config.model);
+    const input = this.buildResponsesInput(messages, config.kernel);
 
-  async send(config: ProjectedConfig, messages: Message[]): Promise<ProviderResponse> {
-    const response = await this.client.chat.completions.create({
-      model: config.model,
-      messages: this.formatMessages(config, messages),
-      temperature: config.apiParams.temperature as number,
-      top_p: config.apiParams.top_p as number,
-      max_tokens: config.apiParams.max_tokens as number | undefined,
+    // GPT-5 uses Responses API with input_text format
+    const response = await (this.client as any).responses.create({
+      model: modelId,
+      input,
+      max_output_tokens: config.features.max_tokens ?? 32768,
+      temperature: config.apiParams.temperature,
+      top_p: config.apiParams.top_p,
+      reasoning: { effort: 'medium' },
     });
 
     return {
-      content: response.choices[0]?.message?.content ?? '',
+      id: response.id,
+      model: modelId,
+      content: response.output_text ?? '',
+      finishReason: response.status === 'completed' ? 'stop' : 'error',
       usage: {
-        inputTokens: response.usage?.prompt_tokens ?? 0,
-        outputTokens: response.usage?.completion_tokens ?? 0,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
       },
-      finishReason: response.choices[0]?.finish_reason ?? 'unknown',
     };
   }
 
-  private formatMessages(config: ProjectedConfig, messages: Message[]) {
-    return [
-      { role: 'system' as const, content: config.kernel },
-      ...messages.map(m => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-    ];
+  private buildResponsesInput(messages: readonly Message[], systemPrompt: string) {
+    const result = [];
+
+    // System message
+    if (systemPrompt) {
+      result.push({
+        role: 'system',
+        content: [{ type: 'input_text', text: systemPrompt }],
+      });
+    }
+
+    // Conversation messages
+    for (const msg of messages) {
+      if (msg.role === 'system') continue;
+      result.push({
+        role: msg.role === 'assistant' ? 'assistant' : 'user',
+        content: [{ type: 'input_text', text: msg.content }],
+      });
+    }
+
+    return result;
   }
 }
 ```
 
-### 4. Kernel Renderer
+### 4. Capability-Based Renderer Negotiation
 
-Each provider can have a preferred kernel format:
+Providers declare their **kernel format preferences** and the SDK negotiates the best format based on strategy capabilities. This decouples providers from specific renderers.
 
-| Provider | Format | Example |
-|----------|--------|---------|
-| Anthropic | XML | `<behavioral_constraints>...</behavioral_constraints>` |
-| OpenAI | Markdown | `## Behavioral Constraints\n- ...` |
-| Google | Plain | `Behavioral Constraints:\n- ...` |
+#### Renderer Preference Declaration
+
+Each provider defines a priority-ordered list of format preferences:
 
 ```typescript
-// src/renderer.ts
-import { KernelRenderer, KernelIR } from '@ctn/core';
+// src/renderer-preferences.ts
+import type { RendererPreferences } from '@ctn/core';
 
-export class MarkdownKernelRenderer implements KernelRenderer {
-  render(ir: KernelIR): string {
-    if (ir.clauses.length === 0) return '';
-    
-    const lines = ir.clauses.map(c => 
-      `- **${c.traitId}**: ${c.text}`
-    );
-    return `## Behavioral Constraints\n${lines.join('\n')}`;
-  }
+export const openaiRendererPreferences: RendererPreferences = {
+  preferred: ['ctn', 'markdown', 'plain'],
+  fallback: 'markdown',
+};
+```
+
+| Provider | Preferences | Fallback |
+|----------|-------------|----------|
+| Anthropic | `['ctn', 'xml', 'plain']` | `'xml'` |
+| Google | `['ctn', 'markdown', 'plain']` | `'markdown'` |
+| OpenAI | `['ctn', 'markdown', 'plain']` | `'markdown'` |
+
+#### How Negotiation Works
+
+```typescript
+// In provider.project():
+import { renderKernel } from '@ctn/core';
+
+const kernel = renderKernel(strategy, ir.kernelIR, openaiRendererPreferences);
+```
+
+The `renderKernel` function:
+1. Iterates through the provider's preferred formats
+2. Checks if the strategy supports each format
+3. Returns the first supported format, or falls back
+
+#### Available Renderers
+
+| Format | Output Example |
+|--------|----------------|
+| `ctn` | `T⊗{v1:-0.5, v5:+0.5} → [deterministic, analytical]` |
+| `xml` | `<behavioral_constraints><constraint id="v1">...</constraint>` |
+| `markdown` | `## Behavioral Constraints\n- **v1**: ...` |
+| `plain` | `Behavioral Constraints:\n- v1: ...` |
+
+#### Strategy Renderer Support
+
+Strategies declare which renderers they support:
+
+```typescript
+// OperationalStrategy supports all formats
+get supportedRenderers(): readonly string[] {
+  return ['ctn', 'xml', 'markdown', 'plain'];
 }
 ```
+
+This allows domain-specific strategies to use specialized formats while maintaining backward compatibility.
 
 ---
 

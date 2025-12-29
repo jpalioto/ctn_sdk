@@ -1,6 +1,6 @@
 # CTN SDK Development Plan
 
-**Status:** v0.2.0 (Milestone 1) — Vertical slice complete  
+**Status:** v0.3.0 (Milestone 2) — Multi-provider support complete
 **Next:** v1.0.0-rc1 — Community feedback release
 
 ---
@@ -8,12 +8,14 @@
 ## Current State
 
 ✅ **Complete:**
-- @ctn/language: Composer, parser, Zod schemas, OperationalStrategy
-- @ctn/core: Projection, provider interface, kernel renderers
-- @ctn/anthropic: Claude provider with YAML model configs
-- @ctn/cli: Cross-platform command-line tool
-- 251 tests (property-based algebraic proofs, invariant validation)
-- README, CONTRIBUTING, CLAUDE.md
+- @ctn/language: Composer, parser, Zod schemas, OperationalStrategy, CTNStrategy
+- @ctn/core: Projection, provider interface, capability-based kernel renderers
+- @ctn/anthropic: Claude provider (Sonnet, Opus, Haiku)
+- @ctn/google: Gemini provider (2.5 Flash/Pro, 3 Preview)
+- @ctn/openai: GPT-5 provider (5.2, 5.1, Mini) using Responses API
+- @ctn/cli: Cross-platform command-line tool with `--provider`, `--model`, `--ground`
+- 287 tests (property-based algebraic proofs, invariant validation)
+- README, CONTRIBUTING, PHILOSOPHY, CLAUDE.md
 
 ---
 
@@ -33,8 +35,8 @@
 
 | Item | Description | Est. | Status |
 |------|-------------|------|--------|
-| @ctn/openai | OpenAI provider with Markdown kernel | 4h | ☐ |
-| @ctn/google | Google provider with plain text kernel | 3h | ☐ |
+| @ctn/openai | OpenAI provider with GPT-5 (Responses API) | 4h | ✅ |
+| @ctn/google | Google provider with Gemini (@google/genai SDK) | 3h | ✅ |
 | Differential Tests | Same IR → multiple providers, measure variance | 4h | ☐ |
 | Parity Metrics | Define "equivalence" as tolerance bands | 2h | ☐ |
 
@@ -68,13 +70,13 @@
 **Goal:** Get the SDK into hands of early adopters for validation.
 
 **Contents:**
-- Complete Anthropic provider
-- CLI tool
-- Documentation (README, CONTRIBUTING, SECURITY)
-- 251+ tests
+- Complete Anthropic, Google, and OpenAI providers
+- CLI tool with multi-provider support (`--provider`, `--model`)
+- Grounding support (`--ground`)
+- Documentation (README, CONTRIBUTING, PHILOSOPHY, SECURITY)
+- 287+ tests
 
 **Not included:**
-- OpenAI/Google providers (P1)
 - npm publish (manual install via git)
 
 **Feedback requested:**
@@ -109,9 +111,9 @@
 
 | Category | Current | Target |
 |----------|---------|--------|
-| Unit tests | 251 | 300+ |
-| Property-based | 20+ | 50+ |
-| Integration | 4 | 12 (4 per provider) |
+| Unit tests | 287 | 350+ |
+| Property-based | 25+ | 50+ |
+| Integration | 12 (4 per provider) | 18 (6 per provider) |
 | E2E | 0 | 6 |
 
 ---
@@ -140,6 +142,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ---
 
 ## Changelog
+
+### v0.3.0 (Milestone 2) — 2025-12-29
+- Multi-provider support: Anthropic, Google, OpenAI
+- @ctn/google: Gemini 2.5/3 with @google/genai SDK
+- @ctn/openai: GPT-5 family with Responses API
+- CLI: `--provider`, `--model`, `--ground` flags
+- Capability-based kernel renderer negotiation
+- CTNStrategy implementation
+- 287 tests
 
 ### v0.2.0 (Milestone 1) — 2025-12-28
 - Complete vertical slice

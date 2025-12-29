@@ -3,7 +3,7 @@
 **Structured Constraint Composition for LLM Inference**
 
 <p align="center">
-  <img src="docs/assets/ctn_canonical_logo.jpg" width="240" alt="CTN (𝒯⊗)">
+  <img src="docs/assets/ctn_canonical_logo.jpg" width="240" alt="CTN (T⊗)">
 </p>
 
 > **Solid, boringly correct foundations for practical tools.**
@@ -14,26 +14,20 @@ CTN SDK is the reference implementation of [Cognitive Tensor Networks](https://g
 
 ---
 
-## ⚠️ Status: Proof of Concept — NOT FOR PRODUCTION USE
+## Status: Proof of Concept — NOT FOR PRODUCTION USE
 
 **This is experimental software.** It demonstrates an approach, not a validated solution.
 
 | Aspect | Status |
 |--------|--------|
-| **Architecture** | ✅ Demonstrated — clean extension points, full observability |
-| **Algebra** | ✅ Proven — 251 tests, associativity/commutativity verified |
-| **Steering Effectiveness** | ❓ Unvalidated hypothesis — no empirical evidence yet |
-| **Projection Matrices** | ❓ Made up — semantic guesses, not calibrated |
-| **Security Review** | ❌ Not done — do not use with untrusted input in production |
-| **Battle Testing** | ❌ None — zero real-world usage |
+| **Architecture** | Demonstrated — clean extension points, full observability |
+| **Algebra** | Proven — 287 tests, associativity/commutativity verified |
+| **Multi-Provider** | Implemented — Anthropic, Google, OpenAI |
+| **Steering Effectiveness** | Unvalidated hypothesis — no empirical evidence yet |
+| **Projection Matrices** | Made up — semantic guesses, not calibrated |
+| **Security Review** | Not done — do not use with untrusted input in production |
 
 **Do not use this in production systems.** The API may change. The projection matrices are placeholders. The security model has not been audited.
-
-**What we're seeking:**
-- Feedback on whether this approach is worth pursuing
-- Empirical validation (or invalidation) of the steering hypothesis
-- Ideas for how to properly calibrate projection matrices
-- Security review from the community
 
 **Read:** [Why CTN Exists](PHILOSOPHY.md) — explains what this is actually doing (spoiler: no magic, just tokens)
 
@@ -59,6 +53,11 @@ ctn send "Explain recursion"
 
 # Constrained — precise + terse compose naturally
 ctn send "@precise @terse Explain recursion"
+
+# Works across providers
+ctn send "@precise @terse Explain recursion" --provider anthropic
+ctn send "@precise @terse Explain recursion" --provider google
+ctn send "@precise @terse Explain recursion" --provider openai
 ```
 
 **Core model:**
@@ -75,12 +74,57 @@ ctn send "@precise @terse Explain recursion"
 # Install
 pnpm add @ctn/cli
 
-# Set API key (no .env files—keys from environment only)
+# Anthropic (default provider)
 export ANTHROPIC_API_KEY=sk-ant-...
-
-# Run
 ctn send "@precise @terse Explain the stock market"
+
+# Google
+export GEMINI_API_KEY=your-key
+ctn send "@precise @terse Explain the stock market" --provider google
+
+# OpenAI
+export OPENAI_API_KEY=your-key
+ctn send "@precise @terse Explain the stock market" --provider openai
 ```
+
+---
+
+## Multi-Provider Support
+
+CTN provides consistent behavioral semantics across providers. The same constraints produce comparable behavior regardless of backend.
+
+| Provider | Alias | Default Model | Environment Variable |
+|----------|-------|---------------|---------------------|
+| Anthropic | `claude` | `sonnet` | `ANTHROPIC_API_KEY` |
+| Google | `gemini` | `gemini-2.5-flash` | `GEMINI_API_KEY` |
+| OpenAI | `gpt` | `gpt-5-mini` | `OPENAI_API_KEY` |
+
+```bash
+# Compare responses across providers
+ctn send "@precise @terse Summarize quantum computing" -p anthropic
+ctn send "@precise @terse Summarize quantum computing" -p google
+ctn send "@precise @terse Summarize quantum computing" -p openai
+```
+
+### Available Models
+
+**Anthropic:**
+- `claude-sonnet-4-5-20250929` (alias: `sonnet`) — default
+- `claude-opus-4-5-20251101` (alias: `opus`)
+- `claude-haiku-4-5-20251001` (alias: `haiku`)
+
+**Google:**
+- `gemini-2.5-flash` (alias: `flash`) — default
+- `gemini-2.5-pro` (alias: `pro`)
+- `gemini-3-pro-preview`
+- `gemini-3-flash-preview`
+
+**OpenAI:**
+- `gpt-5-mini` (alias: `gpt-mini`) — default
+- `gpt-5.2` (alias: `gpt`)
+- `gpt-5.2-pro`
+- `gpt-5.1`
+- `gpt-5.1-codex` (alias: `codex`)
 
 ---
 
@@ -98,6 +142,11 @@ The same prompt with different constraints:
 The `--trace` flag reveals the machinery:
 
 ```
+--- Composition Trace ---
+Provider: anthropic (sonnet)
+
+Strategy: operational (v1.0.0)
+
 Trait Vector:
   v1: -0.500    # Stochasticity (negative = deterministic)
   v2: +0.500    # Concision (positive = terse)
@@ -113,6 +162,8 @@ Kernel:
   <constraint id="v2">Moderately favor brief, dense responses</constraint>
   <constraint id="v5">Moderately favor step-by-step analytical reasoning</constraint>
 </behavioral_constraints>
+
+--- End Trace ---
 ```
 
 **Key insight:** Brevity is achieved through behavioral steering (the kernel clause), not mechanical truncation. The model *chooses* to be brief.
@@ -122,19 +173,17 @@ Kernel:
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  1. PARSE         Extract @constraints from prompt                      │
-│  2. RESOLVE       Map constraint names → trait vectors                  │
-│  3. COMPOSE       N-ary vector addition (associative, commutative)      │
-│  4. NORMALIZE     Saturating normalization to unit ball (‖τ‖ ≤ 1)       │
-│  5. INTERACT      Resolve semantic conflicts (non-expansive)            │
-│  6. PROJECT       Map traits → provider-specific API parameters         │
-│  7. RENDER        Generate behavioral kernel clauses                    │
-│  8. SEND          Execute API call with projected configuration         │
-└─────────────────────────────────────────────────────────────────────────┘
+1. PARSE         Extract @constraints from prompt
+2. RESOLVE       Map constraint names → trait vectors
+3. COMPOSE       N-ary vector addition (associative, commutative)
+4. NORMALIZE     Saturating normalization to unit ball (‖τ‖ ≤ 1)
+5. INTERACT      Resolve semantic conflicts (non-expansive)
+6. PROJECT       Map traits → provider-specific API parameters
+7. RENDER        Generate behavioral kernel clauses
+8. SEND          Execute API call with projected configuration
 ```
 
-**Key invariants (proven by 251 tests):**
+**Key invariants (proven by 287 tests):**
 
 | Property | Guarantee |
 |----------|-----------|
@@ -153,11 +202,17 @@ Kernel:
 |------------|--------|--------------|
 | `@precise` | Deterministic, grounded | v1:-0.5, v5:+0.5 |
 | `@creative` | Exploratory, varied | v1:+0.5 |
+| `@balanced` | Neutral baseline | (none) |
 | `@terse` | Brief, dense | v2:+0.5 |
 | `@verbose` | Detailed, thorough | v2:-0.5 |
 | `@analytical` | Step-by-step reasoning | v5:+0.8 |
+| `@intuitive` | Pattern-based reasoning | v5:-0.5 |
 | `@formal` | Professional tone | v4:+0.5 |
 | `@casual` | Conversational tone | v4:-0.5 |
+| `@focused` | On-topic, narrow | v3:+0.5 |
+| `@exploratory` | Tangential, broad | v3:-0.5 |
+| `@grounded` | Evidence-based | v7:+0.5 |
+| `@speculative` | Hypothesis-based | v7:-0.5 |
 | `@strict` | Literal adherence | v6:+0.5 |
 | `@flexible` | Flexible interpretation | v6:-0.5 |
 
@@ -169,8 +224,6 @@ Features are only used for settings that MUST be mechanical—things that cannot
 |------------|--------|
 | `@nomemory` | context: none |
 | `@lastN[n=5]` | context: { last: 5 } |
-
-**Note:** Behavioral constraints like `@terse` and `@verbose` use traits only. The model chooses brevity through steering, not truncation. For hard token limits, use explicit parameters.
 
 ### Trait Dimensions (Operational Strategy)
 
@@ -195,20 +248,49 @@ ctn send "Hello world"
 # With constraints
 ctn send "@precise @terse Explain recursion"
 
+# Provider selection
+ctn send "Hello" -p anthropic      # Default
+ctn send "Hello" -p google         # Google Gemini
+ctn send "Hello" -p openai         # OpenAI GPT-5
+ctn send "Hello" -p gemini         # Alias for google
+ctn send "Hello" -p gpt            # Alias for openai
+ctn send "Hello" -p claude         # Alias for anthropic
+
+# Model selection
+ctn send "Hello" -m opus           # Claude Opus 4.5
+ctn send "Hello" -m sonnet         # Claude Sonnet 4.5 (default for Anthropic)
+ctn send "Hello" -m haiku          # Claude Haiku 4.5
+ctn send "Hello" -p google -m pro  # Gemini 2.5 Pro
+ctn send "Hello" -p openai -m gpt  # GPT-5.2
+
 # Streaming (tokens appear as generated)
 ctn send "@creative Tell me a story" --stream
 
 # Show composition and projection trace
 ctn send "@analytical Solve 2x + 5 = 13" --trace
 
+# Grounding (fetch URL content as context)
+ctn send "@terse Summarize this" --ground https://example.com/doc.md
+
 # Dry run (show config without API call)
 ctn send "@precise @terse Hello" --dry-run
 
-# Model selection
-ctn send "Hello" -m opus      # Claude Opus 4.5
-ctn send "Hello" -m sonnet    # Claude Sonnet 4.5 (default)
-ctn send "Hello" -m haiku     # Claude Haiku 4.5
+# Strategy selection
+ctn send "@terse Hello" -S operational   # Default
+ctn send "@clarity Hello" -S ctn         # CTN strategy
 ```
+
+### CLI Flags Reference
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--provider <name>` | `-p` | Provider: anthropic, google, openai (or aliases: claude, gemini, gpt) |
+| `--model <name>` | `-m` | Model name or alias |
+| `--strategy <name>` | `-S` | Strategy: operational (default), ctn |
+| `--ground <url>` | `-g` | Ground prompt with content from URL |
+| `--stream` | `-s` | Stream response tokens |
+| `--trace` | | Show composition and projection traces |
+| `--dry-run` | | Show projected config without sending |
 
 ---
 
@@ -218,6 +300,7 @@ ctn send "Hello" -m haiku     # Claude Haiku 4.5
 @ctn/language (stable, provider-agnostic)
 ├── Parser         @constraint syntax extraction
 ├── Composer       N-ary composition with saturation
+├── Strategies     Operational, CTN
 ├── Interactions   Semantic conflict resolution
 └── KernelIR       Provider-agnostic kernel representation
               │
@@ -225,22 +308,25 @@ ctn send "Hello" -m haiku     # Claude Haiku 4.5
 @ctn/core (stable, provider-agnostic)
 ├── Projection     P = clip(b + s ⊙ (W · τ), lo, hi)
 ├── Validation     Zod schemas at all boundaries
-└── Renderers      XML, Markdown, PlainText
+├── Renderers      XML, Markdown, PlainText
+└── Renderer Negotiation  Capability-based kernel format selection
               │
               ▼
-@ctn/anthropic (provider-specific)
-├── Models         Claude 4.5 configs (YAML)
-├── Projection     Anthropic-specific weight matrices
-└── API            send(), sendStream()
+Provider Packages (provider-specific)
+├── @ctn/anthropic    Claude models, XML kernels
+├── @ctn/google       Gemini models, Markdown kernels
+└── @ctn/openai       GPT-5 models, Markdown kernels
 ```
 
 ### Packages
 
 | Package | Description |
 |---------|-------------|
-| `@ctn/language` | Constraint parsing, composition algebra, Zod schemas |
+| `@ctn/language` | Constraint parsing, composition algebra, strategies, Zod schemas |
 | `@ctn/core` | Projection matrices, provider interface, kernel renderers |
-| `@ctn/anthropic` | Claude provider with model configs |
+| `@ctn/anthropic` | Claude provider (Sonnet, Opus, Haiku) |
+| `@ctn/google` | Gemini provider (2.5 Flash/Pro, 3 Preview) |
+| `@ctn/openai` | OpenAI provider (GPT-5.x family) |
 | `@ctn/cli` | Cross-platform command-line tool |
 
 ---
@@ -290,7 +376,7 @@ pnpm install
 # Build all packages
 pnpm -r build
 
-# Run all tests (251 tests)
+# Run all tests (287 tests)
 pnpm -r test
 
 # Link CLI for local development
@@ -303,8 +389,10 @@ cd packages/cli && pnpm link --global
 ctn_sdk/
 ├── packages/
 │   ├── language/     # @ctn/language
-│   ├── core/         # @ctn/core  
+│   ├── core/         # @ctn/core
 │   ├── anthropic/    # @ctn/anthropic
+│   ├── google/       # @ctn/google
+│   ├── openai/       # @ctn/openai
 │   └── cli/          # @ctn/cli
 ├── docs/
 │   ├── CTN_SDK_Design_Specification_v1.1.0.md
@@ -329,7 +417,7 @@ The SDK makes CTN concepts operational:
 
 - **Trait vectors** → TypeScript arrays with Zod validation
 - **Saturating normalization** → `saturate()` function with unit ball guarantee
-- **Projection matrices** → YAML configs per provider
+- **Projection matrices** → Provider-specific weight matrices
 - **Kernels** → XML/Markdown clauses in system prompts
 
 For the theoretical foundations, see the [CTN Whitepaper](https://github.com/jpalioto/ctn_core/blob/master/docs/CTN_Whitepaper_v0_1_2.pdf).
@@ -362,4 +450,4 @@ MIT License — free for research and commercial use.
 
 © 2025 John P. Alioto.
 
-Cognitive Tensor Networks™, CTN™, and 𝒯⊗ are trademarks of John P. Alioto.
+Cognitive Tensor Networks, CTN, and T⊗ are trademarks of John P. Alioto.

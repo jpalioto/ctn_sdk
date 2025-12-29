@@ -1,0 +1,21 @@
+{
+  "entryPoints": [
+    "packages/core/src/index.ts",
+    "packages/language/src/index.ts",
+    "packages/anthropic/src/index.ts",
+    "packages/google/src/index.ts",
+    "packages/openai/src/index.ts"
+  ],
+  "out": "docs/api",
+  "plugin": ["typedoc-plugin-markdown"],
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeProtected": false,
+  "excludeInternal": true,
+  "skipErrorChecking": true,
+  "categoryOrder": ["Providers", "Strategies", "Core", "*"],
+  "navigation": {
+    "includeCategories": true,
+    "includeGroups": true
+  }
+}

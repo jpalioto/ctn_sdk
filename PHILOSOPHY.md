@@ -103,7 +103,7 @@ This isn't a production tool. It's an **exploration tool**.
 - Associative: grouping doesn't matter
 - Commutative: order doesn't matter  
 - Bounded: results stay in the unit ball
-- These properties are proven by 251 tests
+- These properties are proven by 287 tests
 
 ✅ The architecture cleanly separates concerns
 - Strategy defines the trait space
@@ -224,16 +224,27 @@ That's where we are. That's what we're sharing. Feedback welcome.
 
 ```bash
 pnpm add @ctn/cli
-export ANTHROPIC_API_KEY=sk-ant-...
 
-# See the machinery
+# Anthropic (default)
+export ANTHROPIC_API_KEY=sk-ant-...
 ctn send "@precise Explain recursion" --trace
+
+# Google Gemini
+export GEMINI_API_KEY=your-key
+ctn send "@precise Explain recursion" --trace -p google
+
+# OpenAI GPT-5
+export OPENAI_API_KEY=your-key
+ctn send "@precise Explain recursion" --trace -p openai
 
 # Play with composition
 ctn send "@creative @analytical Tell me a story" --trace
 
 # See cancellation
 ctn send "@terse @verbose Hello" --trace
+
+# Ground with external content
+ctn send "@terse Summarize this" --ground https://example.com/doc.md
 ```
 
 Pull back the curtain. See what's actually happening. Form your own hypotheses.
