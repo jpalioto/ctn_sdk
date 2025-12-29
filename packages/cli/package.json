@@ -28,6 +28,7 @@
   "dependencies": {
     "@ctn/anthropic": "workspace:*",
     "@ctn/google": "workspace:*",
+    "@ctn/openai": "workspace:*",
     "@ctn/core": "workspace:*",
     "@ctn/language": "workspace:*",
     "commander": "^13.1.0"
