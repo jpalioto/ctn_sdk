@@ -16,6 +16,7 @@ program
   .argument('<prompt>', 'The prompt to send (may include @constraints)')
   .option('-p, --provider <provider>', 'Provider to use', 'anthropic')
   .option('-m, --model <model>', 'Model name or alias', 'sonnet')
+  .option('-S, --strategy <name>', 'Strategy to use (operational, ctn)', 'operational')
   .option('-s, --stream', 'Stream the response')
   .option('--trace', 'Show composition and projection traces')
   .option('--dry-run', 'Show projected config without sending')

@@ -1,7 +1,9 @@
 import {
   parse,
   OperationalStrategy,
+  CTNStrategy,
   Composer,
+  type TraitStrategy,
   type ResolvedConstraint,
   type AbstractConstraint,
 } from '@ctn/language';
@@ -12,9 +14,24 @@ import { formatTrace, formatDryRun } from '../output/formatter.js';
 export interface SendOptions {
   provider: string;
   model: string;
+  strategy: string;
   stream?: boolean;
   trace?: boolean;
   dryRun?: boolean;
+}
+
+/**
+ * Gets a strategy instance based on strategy name.
+ * This switch is acceptable - it's at the CLI boundary translating user input to types.
+ */
+function getStrategy(name: string): TraitStrategy {
+  switch (name.toLowerCase()) {
+    case 'ctn':
+      return new CTNStrategy();
+    case 'operational':
+    default:
+      return new OperationalStrategy();
+  }
 }
 
 /**
@@ -23,7 +40,7 @@ export interface SendOptions {
  */
 function parsePromptWithConstraints(
   prompt: string,
-  strategy: OperationalStrategy
+  strategy: TraitStrategy
 ): { constraint: AbstractConstraint; cleanPrompt: string } {
   const parsed = parse(prompt);
   const composer = new Composer(strategy);
@@ -74,11 +91,11 @@ export async function sendCommand(
   prompt: string,
   options: SendOptions
 ): Promise<void> {
-  const { provider: providerName, model, stream, trace, dryRun } = options;
+  const { provider: providerName, model, strategy: strategyName, stream, trace, dryRun } = options;
 
   try {
     // Initialize strategy and provider
-    const strategy = new OperationalStrategy();
+    const strategy = getStrategy(strategyName);
     const provider = getProvider(providerName);
 
     // Parse prompt and extract constraints
@@ -94,7 +111,7 @@ export async function sendCommand(
 
     // If dry-run, show config and exit
     if (dryRun) {
-      formatDryRun(config, cleanPrompt);
+      formatDryRun(config, cleanPrompt, strategy);
       return;
     }
 

@@ -11,6 +11,9 @@ export function formatTrace(
 ): void {
   console.log('\n--- Composition Trace ---');
 
+  // Show strategy info
+  console.log(`\nStrategy: ${strategy.name} (v${strategy.version})`);
+
   // Format trait vector
   console.log('\nTrait Vector:');
   const labeled = strategy.formatVector(constraint.traits);
@@ -49,9 +52,17 @@ export function formatTrace(
 /**
  * Formats and prints dry-run output as JSON.
  */
-export function formatDryRun(config: ProjectedConfig, prompt: string): void {
+export function formatDryRun(
+  config: ProjectedConfig,
+  prompt: string,
+  strategy: TraitStrategy
+): void {
   const snapshot = {
     timestamp: new Date().toISOString(),
+    strategy: {
+      name: strategy.name,
+      version: strategy.version,
+    },
     model: config.model,
     prompt,
     projectedConfig: {
