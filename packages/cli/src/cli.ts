@@ -15,7 +15,7 @@ program
   .description('Send a prompt with optional CTN constraints')
   .argument('<prompt>', 'The prompt to send (may include @constraints)')
   .option('-p, --provider <provider>', 'Provider to use', 'anthropic')
-  .option('-m, --model <model>', 'Model name or alias', 'sonnet')
+  .option('-m, --model <model>', 'Model name or alias')
   .option('-S, --strategy <name>', 'Strategy to use (operational, ctn)', 'operational')
   .option('-g, --ground <uri>', 'Ground prompt with content from URI (http/https)')
   .option('-s, --stream', 'Stream the response')

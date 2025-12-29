@@ -16,3 +16,6 @@ dist/
 .vscode/
 *.swp
 *.swo
+
+# Claude Code user settings
+.claude/settings.local.json

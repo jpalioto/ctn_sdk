@@ -7,7 +7,6 @@ import {
   type ResolvedConstraint,
   type AbstractConstraint,
 } from '@ctn/language';
-import { AnthropicProvider } from '@ctn/anthropic';
 import type { Message, ProjectedConfig } from '@ctn/core';
 import { formatTrace, formatDryRun } from '../output/formatter.js';
 import {
@@ -15,10 +14,11 @@ import {
   formatGroundingContext,
   type GroundingResult,
 } from '../grounding.js';
+import { getProvider, getDefaultModel } from '../providers.js';
 
 export interface SendOptions {
   provider: string;
-  model: string;
+  model?: string;
   strategy: string;
   ground?: string;
   stream?: boolean;
@@ -72,23 +72,6 @@ function parsePromptWithConstraints(
   return { constraint, cleanPrompt };
 }
 
-/**
- * Gets the provider instance based on provider name.
- */
-function getProvider(providerName: string): AnthropicProvider {
-  switch (providerName.toLowerCase()) {
-    case 'anthropic':
-      // Check for API key
-      if (!process.env.ANTHROPIC_API_KEY) {
-        console.error('Error: ANTHROPIC_API_KEY environment variable is not set');
-        process.exit(1);
-      }
-      return new AnthropicProvider();
-    default:
-      console.error(`Error: Unknown provider '${providerName}'. Currently only 'anthropic' is supported.`);
-      process.exit(1);
-  }
-}
 
 /**
  * The send command implementation.
@@ -97,12 +80,15 @@ export async function sendCommand(
   prompt: string,
   options: SendOptions
 ): Promise<void> {
-  const { provider: providerName, model, strategy: strategyName, ground, stream, trace, dryRun } = options;
+  const { provider: providerName, model: modelOption, strategy: strategyName, ground, stream, trace, dryRun } = options;
 
   try {
     // Initialize strategy and provider
     const strategy = getStrategy(strategyName);
     const provider = getProvider(providerName);
+
+    // Resolve model - use option or provider default
+    const model = modelOption || getDefaultModel(providerName);
 
     // Fetch grounding content if requested
     let groundingResult: GroundingResult | null = null;
@@ -118,7 +104,7 @@ export async function sendCommand(
 
     // Show trace if requested
     if (trace) {
-      formatTrace(constraint, config, strategy, groundingResult);
+      formatTrace(constraint, config, strategy, groundingResult, providerName);
     }
 
     // If dry-run, show config and exit

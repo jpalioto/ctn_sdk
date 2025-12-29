@@ -9,9 +9,15 @@ export function formatTrace(
   constraint: AbstractConstraint,
   config: ProjectedConfig,
   strategy: TraitStrategy,
-  groundingResult?: GroundingResult | null
+  groundingResult?: GroundingResult | null,
+  providerName?: string
 ): void {
   console.log('\n--- Composition Trace ---');
+
+  // Show provider info
+  if (providerName) {
+    console.log(`Provider: ${providerName} (${config.model})`);
+  }
 
   // Show grounding info if present
   if (groundingResult) {
