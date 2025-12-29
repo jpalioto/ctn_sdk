@@ -178,8 +178,8 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
    * Implements CtnCapable.
    */
   renderCtn(ir: KernelIR): string {
-    // Extract trait values from clauses
-    const traitVector = this.extractTraitVector(ir);
+    // Use composed trait vector if available, otherwise extract from clauses
+    const traitVector = ir.traitVector ?? this.extractTraitVector(ir);
     const formattedVector = traitVector.map((v) => v.toFixed(2)).join(', ');
 
     // Determine mode (default Analysis)

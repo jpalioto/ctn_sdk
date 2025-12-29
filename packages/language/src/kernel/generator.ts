@@ -96,6 +96,7 @@ export function generateKernelIR(
     clauses,
     omittedTraits,
     modifiedClauses,
+    traitVector: [...traits],
   };
 }
 

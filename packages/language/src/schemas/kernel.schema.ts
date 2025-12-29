@@ -64,6 +64,8 @@ export const KernelIRSchema = z.object({
   omittedTraits: z.array(z.string()).readonly(),
   /** Clauses modified by trait interactions */
   modifiedClauses: z.array(ModifiedClauseSchema).readonly(),
+  /** The composed trait vector (for renderers that need exact values) */
+  traitVector: z.array(z.number()).readonly().optional(),
 }).readonly();
 
 export type KernelIR = z.infer<typeof KernelIRSchema>;
@@ -93,13 +95,18 @@ export function getClausePolarity(value: number): ClausePolarity {
 /**
  * Creates an empty KernelIR for the identity (zero) vector.
  */
-export function emptyKernelIR(strategyName: string, strategyVersion: string): KernelIR {
+export function emptyKernelIR(
+  strategyName: string,
+  strategyVersion: string,
+  traitVector?: readonly number[]
+): KernelIR {
   return {
     strategyName,
     strategyVersion,
     clauses: [],
     omittedTraits: [],
     modifiedClauses: [],
+    traitVector: traitVector ? [...traitVector] : undefined,
   };
 }
 
