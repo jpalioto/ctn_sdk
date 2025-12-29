@@ -1,5 +1,6 @@
 import type { AbstractConstraint, TraitStrategy } from '@ctn/language';
 import type { ProjectedConfig } from '@ctn/core';
+import type { GroundingResult } from '../grounding.js';
 
 /**
  * Formats and prints trace information.
@@ -7,9 +8,20 @@ import type { ProjectedConfig } from '@ctn/core';
 export function formatTrace(
   constraint: AbstractConstraint,
   config: ProjectedConfig,
-  strategy: TraitStrategy
+  strategy: TraitStrategy,
+  groundingResult?: GroundingResult | null
 ): void {
   console.log('\n--- Composition Trace ---');
+
+  // Show grounding info if present
+  if (groundingResult) {
+    console.log('\nGrounding:');
+    console.log(`  Source: ${groundingResult.source}`);
+    const charInfo = groundingResult.truncated
+      ? `${groundingResult.charCount} (truncated from larger source)`
+      : `${groundingResult.charCount}`;
+    console.log(`  Characters: ${charInfo}`);
+  }
 
   // Show strategy info
   console.log(`\nStrategy: ${strategy.name} (v${strategy.version})`);

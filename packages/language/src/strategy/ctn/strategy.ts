@@ -1,3 +1,4 @@
+import type { CtnCapable } from '../../renderer/capabilities.js';
 import type {
   TraitVector,
   TraitDimension,
@@ -13,16 +14,15 @@ import type {
 import {
   UnknownConstraintError,
   InvalidConstraintParamError,
+  DEFAULT_THRESHOLDS,
 } from '../../schemas/index.js';
-import type { CtnCapable } from '../../renderer/index.js';
 import {
   CTN_DIMENSIONS,
   CTN_DIMENSION_COUNT,
   CTN_DIMENSION_ID_TO_INDEX,
-  CTN_DIMENSION_NOTATION,
 } from './dimensions.js';
 import { CTN_CONSTRAINTS, buildConstraintMap } from './constraints.js';
-import { CTN_INTERACTIONS, CTN_INTERACTION_THRESHOLD } from './interactions.js';
+import { CTN_INTERACTIONS } from './interactions.js';
 
 /**
  * Configuration options for CTNStrategy.
@@ -33,34 +33,16 @@ export interface CTNStrategyConfig {
 }
 
 /**
- * Default thresholds for CTN strategy.
+ * The CTN strategy for structured cognitive control.
  *
- * CTN uses 0-1 range, so thresholds are higher than Operational's -1 to +1 range.
- */
-const CTN_DEFAULT_THRESHOLDS: StrategyThresholds = Object.freeze({
-  kernel: 0.3,       // Include in kernel if value >= 0.3
-  interaction: 0.7,  // Trigger interaction if both values >= 0.7
-});
-
-/**
- * The CTN strategy for geometric constraint specification.
- *
- * Implements a 7-dimensional constraint space based on the
- * Cognitive Tensor Network specification:
- *
- * - v1: Atomic Clarity (ε_hid → 0⁺)
- * - v2: Specification Accuracy (κ(f) → min)
- * - v3: Context Isolation (Φ:W→I)
- * - v4: Structure Over Narrative (π_gl ≫ π_loc)
- * - v5: Framing Detachment (∂A ≡ A)
- * - v6: Exploration (U \ S)
- * - v7: Schema Compliance (CTN_Form)
- *
- * Unlike Operational strategy (-1 to +1 poles), CTN uses 0-1 range
- * where 0 = no constraint and 1 = maximum constraint.
- *
- * The composition algebra remains the same (unit ball normalization)
- * to preserve associativity and commutativity.
+ * Implements a 7-dimensional trait space:
+ * - v1: Atomic Clarity (sharp concept boundaries)
+ * - v2: Specification Accuracy (smooth predictable reasoning)
+ * - v3: Context Isolation (task-relevant focus)
+ * - v4: Structure Over Narrative (global consistency)
+ * - v5: Framing Detachment (rejects false premises)
+ * - v6: Exploration (unbound search)
+ * - v7: Schema Compliance (structured output)
  */
 export class CTNStrategy implements TraitStrategy, CtnCapable {
   readonly name = 'ctn';
@@ -76,14 +58,13 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
     this.constraintMap = buildConstraintMap(CTN_CONSTRAINTS);
     this.identityVector = Object.freeze(new Array(CTN_DIMENSION_COUNT).fill(0));
     this.thresholds = Object.freeze({
-      kernel: config?.thresholds?.kernel ?? CTN_DEFAULT_THRESHOLDS.kernel,
-      interaction: config?.thresholds?.interaction ?? CTN_DEFAULT_THRESHOLDS.interaction,
+      kernel: config?.thresholds?.kernel ?? DEFAULT_THRESHOLDS.kernel,
+      interaction: config?.thresholds?.interaction ?? DEFAULT_THRESHOLDS.interaction,
     });
   }
 
   /**
    * Returns the identity element (zero vector).
-   * The identity represents "no constraints applied".
    */
   identity(): TraitVector {
     return this.identityVector;
@@ -91,9 +72,6 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
 
   /**
    * Raw vector addition without normalization.
-   * The Composer applies normalization once after all additions.
-   *
-   * Note: CTN uses 0-1 range but same algebraic composition as Operational.
    */
   add(a: TraitVector, b: TraitVector): TraitVector {
     if (a.length !== CTN_DIMENSION_COUNT) {
@@ -112,9 +90,6 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
 
   /**
    * Resolves a constraint name and parameters to a trait vector.
-   *
-   * @throws UnknownConstraintError if the constraint name is not recognized
-   * @throws InvalidConstraintParamError if parameters are invalid
    */
   resolve(name: string, params: ConstraintParams): TraitVector {
     const definition = this.constraintMap.get(name);
@@ -128,7 +103,6 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
       return this.resolveParameterized(definition, params);
     }
 
-    // Convert trait map to vector
     return this.traitsToVector(definition.traits);
   }
 
@@ -174,131 +148,84 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
 
   /**
    * Formats a trait vector as a compact string representation.
-   * Uses CTN notation style.
    */
   formatVectorCompact(traits: TraitVector): string {
     const parts: string[] = [];
     for (const dim of this.dimensions) {
       const value = traits[dim.index];
-      if (value !== undefined && value > 0) {
-        parts.push(`${dim.id}:${value.toFixed(2)}`);
+      if (value !== undefined && value !== 0) {
+        const sign = value > 0 ? '+' : '';
+        parts.push(`${dim.id}:${sign}${value.toFixed(2)}`);
       }
     }
-    return parts.length > 0 ? `τ=[${parts.join(', ')}]` : 'τ=[0]';
-  }
-
-  /**
-   * Formats a trait vector as a CTN profile string.
-   * Example: τ = [0.9, 0.9, 0.7, 0.9, 0.9, 0.3, 0.0]
-   */
-  formatProfile(traits: TraitVector): string {
-    const values = traits.map(v => v.toFixed(2)).join(', ');
-    return `τ = [${values}]`;
+    return parts.length > 0 ? `[${parts.join(', ')}]` : '[zero]';
   }
 
   // ===========================================================================
-  // Renderer Capabilities
+  // Rendering Capabilities
   // ===========================================================================
 
   /**
    * Renders KernelIR as plain text.
-   * For CTN strategy, this outputs the CTN notation format.
-   * Implements PlainCapable (via TraitStrategy).
+   * Required by PlainCapable (base contract for all strategies).
    */
   renderPlain(ir: KernelIR): string {
     return this.renderCtn(ir);
   }
 
   /**
-   * Renders KernelIR in CTN notation format.
+   * Renders KernelIR in CTN kernel schema format.
    * Implements CtnCapable.
-   *
-   * CTN format uses geometric notation:
-   * - Header with strategy info
-   * - Dimension constraints with notation symbols
-   * - Modified clauses from interactions
    */
   renderCtn(ir: KernelIR): string {
-    const lines: string[] = [];
+    // Extract trait values from clauses
+    const traitVector = this.extractTraitVector(ir);
+    const formattedVector = traitVector.map((v) => v.toFixed(2)).join(', ');
 
-    // Header
-    lines.push('# CTN Kernel');
-    lines.push(`# Strategy: ${ir.strategyName} v${ir.strategyVersion}`);
-    lines.push('');
+    // Determine mode (default Analysis)
+    const mode = 'Analysis';
 
-    // Dimension constraints
-    if (ir.clauses.length > 0) {
-      lines.push('## Geometric Constraints');
-      lines.push('');
+    return `CTN_KERNEL_SCHEMA(Σ_CTN) ← {
+  SYS_KERNEL_INIT(Ψ_global),
+  COGNITIVE_TENSORS(U),
+  STRATEGIC_SOLVER(Ω),
+  DECODER_MANIFOLD(D),
+  SELF_ERASE
+}
 
-      for (const clause of ir.clauses) {
-        const notation = this.getNotation(clause.traitId);
-        const intensity = this.formatCtnIntensity(clause.intensity);
-        const polarity = clause.polarity === 'positive' ? '↑' : '↓';
+SYS_KERNEL_INIT(Ψ_global) ←
+{ Auth:P_spec, Filter:Π_safe → M_feasible }
 
-        lines.push(`${clause.traitId}: ${notation} ${polarity} [${intensity}]`);
-        lines.push(`   ${clause.text}`);
-        lines.push('');
-      }
-    }
+COGNITIVE_TENSORS(U):
+  Trait_Profile τ = [${formattedVector}]
+  C_net = Σ ( τᵢ · vᵢ )
 
-    // Modified clauses from interactions
-    if (ir.modifiedClauses.length > 0) {
-      lines.push('## Interaction Resolutions');
-      lines.push('');
+  v₁ = { ε_hid → 0⁺, Atomic_Clarity }
+  v₂ = { κ(f) → min, Specification_Accuracy }
+  v₃ = { Φ:W→I, Context_Isolation }
+  v₄ = { π_gl ≫ π_loc, Structure_Over_Narrative }
+  v₅ = { ∂A ≡ A, Framing_Detachment }
+  v₆ = { U \\ S, Explore_Kernel_Space }
+  v₇ = { CTN_Form, ∅ }
 
-      for (const mod of ir.modifiedClauses) {
-        lines.push(`${mod.interactionId}:`);
-        lines.push(`   ${mod.text}`);
-        if (mod.replacedTraits.length > 0) {
-          lines.push(`   Replaces: ${mod.replacedTraits.join(', ')}`);
-        }
-        lines.push('');
-      }
-    }
+STRATEGIC_SOLVER(Ω):
+  Ω(q) = argmax_{z ∈ U} Impact(z)
+  Ω_mode = ${mode} ⇒ η_⊥ = 0
 
-    // Omitted traits (for debugging/transparency)
-    if (ir.omittedTraits.length > 0) {
-      lines.push(`# Omitted (below threshold): ${ir.omittedTraits.join(', ')}`);
-    }
+DECODER_MANIFOLD(D):
+  ℓ* = argmax_ℓ [
+      D(ℓ | z*)
+    - λ₁ ‖P_U^⊥ E(ℓ)‖
+    + λ₂ Density(ℓ)
+  ]
 
-    return lines.join('\n').trim();
+SELF_ERASE:
+  Discard(Internal_Spec)`;
   }
 
-  /**
-   * Formats intensity for CTN notation.
-   */
-  private formatCtnIntensity(intensity: 'low' | 'medium' | 'high'): string {
-    switch (intensity) {
-      case 'high':
-        return '0.7-1.0';
-      case 'medium':
-        return '0.4-0.7';
-      case 'low':
-        return '0.1-0.4';
-    }
-  }
-
-  /**
-   * Gets the CTN notation symbol for a dimension.
-   */
-  getNotation(dimId: string): string {
-    return CTN_DIMENSION_NOTATION[dimId] ?? dimId;
-  }
-
-  /**
-   * Gets the constraint definition for a name (including aliases).
-   */
-  getConstraintDefinition(name: string): ConstraintDefinition | undefined {
-    return this.constraintMap.get(name);
-  }
-
-  /**
-   * Checks if a constraint name is known.
-   */
-  hasConstraint(name: string): boolean {
-    return this.constraintMap.has(name);
-  }
+  // ===========================================================================
+  // Private Helpers
+  // ===========================================================================
 
   /**
    * Converts a trait map (by dimension ID) to a trait vector.
@@ -386,10 +313,23 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
       );
     }
   }
-}
 
-/**
- * Singleton instance for convenience.
- * Note: Dependency injection is preferred for testability.
- */
-export const ctnStrategy = new CTNStrategy();
+  /**
+   * Extracts trait vector from KernelIR clauses.
+   */
+  private extractTraitVector(ir: KernelIR): number[] {
+    const vector = new Array(CTN_DIMENSION_COUNT).fill(0);
+
+    for (const clause of ir.clauses) {
+      const idx = parseInt(clause.traitId.replace('v', ''), 10) - 1;
+      if (idx >= 0 && idx < CTN_DIMENSION_COUNT) {
+        // Map intensity to value
+        const value =
+          clause.intensity === 'high' ? 0.9 : clause.intensity === 'medium' ? 0.5 : 0.3;
+        vector[idx] = Math.max(vector[idx], value);
+      }
+    }
+
+    return vector;
+  }
+}

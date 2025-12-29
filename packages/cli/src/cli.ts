@@ -17,6 +17,7 @@ program
   .option('-p, --provider <provider>', 'Provider to use', 'anthropic')
   .option('-m, --model <model>', 'Model name or alias', 'sonnet')
   .option('-S, --strategy <name>', 'Strategy to use (operational, ctn)', 'operational')
+  .option('-g, --ground <uri>', 'Ground prompt with content from URI (http/https)')
   .option('-s, --stream', 'Stream the response')
   .option('--trace', 'Show composition and projection traces')
   .option('--dry-run', 'Show projected config without sending')

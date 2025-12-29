@@ -1,51 +1,35 @@
 import type { TraitInteraction } from '../../schemas/index.js';
+import { CTN_DIMENSION_ID_TO_INDEX } from './dimensions.js';
 
 /**
- * CTN Strategy Interactions
+ * Trait interactions for the CTN strategy.
  *
- * Defines how dimension conflicts are resolved when multiple
- * high-intensity constraints are combined.
- *
- * CTN dimensions use 0-1 range, so "both_high" means both > 0.7
- *
- * Dimension indices:
- * - v1 (Atomic Clarity) = 0
- * - v2 (Specification Accuracy) = 1
- * - v3 (Context Isolation) = 2
- * - v4 (Structure Over Narrative) = 3
- * - v5 (Framing Detachment) = 4
- * - v6 (Exploration) = 5
- * - v7 (Schema Compliance) = 6
- *
- * Key principle: interactions are NON-EXPANSIVE (‖τ'‖ ≤ ‖τ‖)
+ * | ID                   | Traits  | Condition   | Resolution | Rationale                           |
+ * |----------------------|---------|-------------|------------|-------------------------------------|
+ * | exploration-schema   | v6, v7  | both_high   | modify     | Schema constrains exploration       |
+ * | structure-exploration| v4, v6  | both_high   | modify     | Structure limits exploration        |
+ * | clarity-exploration  | v1, v6  | both_high   | modify     | Clarity bounds exploration          |
  */
-
 export const CTN_INTERACTIONS: readonly TraitInteraction[] = Object.freeze([
   {
     id: 'exploration-schema',
-    traitIndices: [5, 6] as const, // v6 (Exploration), v7 (Schema Compliance)
+    traitIndices: [CTN_DIMENSION_ID_TO_INDEX['v6']!, CTN_DIMENSION_ID_TO_INDEX['v7']!] as const,
     condition: 'both_high',
-    resolution: 'priority',
-    priorityIndex: 6, // Schema compliance wins - structured output takes precedence
+    resolution: 'modify',
+    modifiedText: 'Schema compliance constrains exploration bounds',
   },
   {
     id: 'structure-exploration',
-    traitIndices: [3, 5] as const, // v4 (Structure), v6 (Exploration)
+    traitIndices: [CTN_DIMENSION_ID_TO_INDEX['v4']!, CTN_DIMENSION_ID_TO_INDEX['v6']!] as const,
     condition: 'both_high',
     resolution: 'modify',
-    modifiedText: 'Maintain structural integrity; exploration constrained to formal variations',
+    modifiedText: 'High structure limits exploration to coherent paths',
   },
   {
-    id: 'isolation-exploration',
-    traitIndices: [2, 5] as const, // v3 (Context Isolation), v6 (Exploration)
+    id: 'clarity-exploration',
+    traitIndices: [CTN_DIMENSION_ID_TO_INDEX['v1']!, CTN_DIMENSION_ID_TO_INDEX['v6']!] as const,
     condition: 'both_high',
     resolution: 'modify',
-    modifiedText: 'Explore within isolated context; external connections suppressed',
+    modifiedText: 'Atomic clarity bounds exploration to distinct concepts',
   },
 ]);
-
-/**
- * Threshold for "high" in CTN space (0-1 range).
- * Default: 0.7 (compared to 0.5 for Operational's -1 to +1 range)
- */
-export const CTN_INTERACTION_THRESHOLD = 0.7;

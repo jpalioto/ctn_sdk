@@ -75,3 +75,77 @@ export const OPERATIONAL_PROJECTION_MATRIX: ProjectionMatrix = {
  *   temperature: 1.0 + 0.5 * (-0.4*0.8) = 1.0 - 0.16 = 0.84
  *   top_k: 40 + 30 * (0.3*0.8) = 40 + 7.2 = 47.2
  */
+
+/**
+ * Projection matrix for the CTN strategy on Anthropic Claude models.
+ *
+ * Maps the 7-dimensional CTN trait space to Anthropic API parameters.
+ * CTN uses 0-1 range (0 = no constraint, 1 = maximum constraint).
+ *
+ * CTN dimensions (v1.0.0):
+ *   v1 (idx 0): Atomic Clarity       (0-1, higher = sharper concept boundaries)
+ *   v2 (idx 1): Specification Accuracy (0-1, higher = smoother reasoning path)
+ *   v3 (idx 2): Context Isolation    (0-1, higher = more focused)
+ *   v4 (idx 3): Structure Over Narrative (0-1, higher = global consistency)
+ *   v5 (idx 4): Framing Detachment   (0-1, higher = reject false premises)
+ *   v6 (idx 5): Exploration          (0-1, higher = more exploratory)
+ *   v7 (idx 6): Schema Compliance    (0-1, higher = structured output)
+ *
+ * Weight rationale:
+ *
+ * temperature:
+ *   - v1 (-0.3): Higher clarity → lower temperature (more deterministic)
+ *   - v2 (-0.2): Smoother paths → slightly lower temperature
+ *   - v4 (-0.2): Structure → lower temperature
+ *   - v6 (+0.5): Exploration → higher temperature
+ *
+ * top_k:
+ *   - v1 (+0.4): Higher clarity → narrower token pool
+ *   - v4 (+0.3): Structure → narrower selection
+ *   - v6 (-0.4): Exploration → broader token pool
+ *   - v7 (+0.3): Schema compliance → focused tokens
+ *
+ * Note: Baseline assumes moderate constraint (0.5 across dimensions).
+ * Zero vector means "no constraints" so we use a neutral baseline.
+ */
+export const CTN_PROJECTION_MATRIX: ProjectionMatrix = {
+  baseline: {
+    temperature: 0.8,  // Slightly lower baseline for CTN's precision focus
+    top_k: 50,         // Slightly narrower baseline
+  },
+
+  weights: {
+    //              v1    v2    v3    v4    v5    v6    v7
+    temperature: [-0.3, -0.2, 0.0, -0.2, 0.0, 0.5, 0.0],
+    top_k: [0.4, 0.0, 0.0, 0.3, 0.0, -0.4, 0.3],
+  },
+
+  scale: {
+    temperature: 0.4,  // ±0.4 range from baseline
+    top_k: 25,         // ±25 from baseline
+  },
+
+  clamps: {
+    temperature: [0.0, 1.0],
+    top_k: [1, 100],
+  },
+};
+
+/**
+ * Example CTN projections:
+ *
+ * Zero vector (no constraints, baseline):
+ *   temperature: 0.8, top_k: 50
+ *
+ * @stable [0.9, 0.9, 0.7, 0.9, 0.9, 0.3, 0.0]:
+ *   temperature: 0.8 + 0.4 * (-0.3*0.9 + -0.2*0.9 + -0.2*0.9 + 0.5*0.3)
+ *              = 0.8 + 0.4 * (-0.27 - 0.18 - 0.18 + 0.15) = 0.8 - 0.19 = 0.61
+ *   top_k: 50 + 25 * (0.4*0.9 + 0.3*0.9 - 0.4*0.3)
+ *        = 50 + 25 * (0.36 + 0.27 - 0.12) = 50 + 12.75 = 62.75
+ *
+ * @exploratory [0.6, 0.5, 0.3, 0.5, 0.7, 0.9, 0.0]:
+ *   temperature: 0.8 + 0.4 * (-0.3*0.6 + -0.2*0.5 + -0.2*0.5 + 0.5*0.9)
+ *              = 0.8 + 0.4 * (-0.18 - 0.1 - 0.1 + 0.45) = 0.8 + 0.03 = 0.83
+ *   top_k: 50 + 25 * (0.4*0.6 + 0.3*0.5 - 0.4*0.9)
+ *        = 50 + 25 * (0.24 + 0.15 - 0.36) = 50 + 0.75 = 50.75
+ */

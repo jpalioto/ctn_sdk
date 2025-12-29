@@ -8,6 +8,8 @@ import {
   type TraitDimension,
   type LabeledTraits,
 } from './trait.schema.js';
+import type { Features } from './features.schema.js';
+import type { TraitInteraction } from './interaction.schema.js';
 
 // ============================================================================
 // SemVer Validation
@@ -215,10 +217,17 @@ export interface TraitStrategy extends PlainCapable {
   readonly dimensions: readonly TraitDimension[];
   /** Configurable thresholds for kernel generation and interactions */
   readonly thresholds: StrategyThresholds;
+  /** Trait interactions for this strategy */
+  readonly interactions: readonly TraitInteraction[];
 
   identity(): TraitVector;
   add(a: TraitVector, b: TraitVector): TraitVector;
   resolve(name: string, params: ConstraintParams): TraitVector;
+  /** Resolves a constraint and returns both traits and features */
+  resolveWithFeatures(
+    name: string,
+    params: ConstraintParams
+  ): { traits: TraitVector; features: Features };
   formatVector(traits: TraitVector): LabeledTraits;
   formatVectorCompact(traits: TraitVector): string;
 }

@@ -10,4 +10,4 @@ export {
   MODEL_ALIASES,
 } from './models.js';
 
-export { OPERATIONAL_PROJECTION_MATRIX } from './projection.js';
+export { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX } from './projection.js';

@@ -9,3 +9,6 @@ export * from './config/index.js';
 
 // Re-export renderer module
 export * from './renderer/index.js';
+
+// Re-export grounding module
+export * from './grounding/index.js';

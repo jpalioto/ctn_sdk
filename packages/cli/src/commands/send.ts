@@ -10,11 +10,17 @@ import {
 import { AnthropicProvider } from '@ctn/anthropic';
 import type { Message, ProjectedConfig } from '@ctn/core';
 import { formatTrace, formatDryRun } from '../output/formatter.js';
+import {
+  fetchGrounding,
+  formatGroundingContext,
+  type GroundingResult,
+} from '../grounding.js';
 
 export interface SendOptions {
   provider: string;
   model: string;
   strategy: string;
+  ground?: string;
   stream?: boolean;
   trace?: boolean;
   dryRun?: boolean;
@@ -91,12 +97,18 @@ export async function sendCommand(
   prompt: string,
   options: SendOptions
 ): Promise<void> {
-  const { provider: providerName, model, strategy: strategyName, stream, trace, dryRun } = options;
+  const { provider: providerName, model, strategy: strategyName, ground, stream, trace, dryRun } = options;
 
   try {
     // Initialize strategy and provider
     const strategy = getStrategy(strategyName);
     const provider = getProvider(providerName);
+
+    // Fetch grounding content if requested
+    let groundingResult: GroundingResult | null = null;
+    if (ground) {
+      groundingResult = await fetchGrounding(ground);
+    }
 
     // Parse prompt and extract constraints
     const { constraint, cleanPrompt } = parsePromptWithConstraints(prompt, strategy);
@@ -106,7 +118,7 @@ export async function sendCommand(
 
     // Show trace if requested
     if (trace) {
-      formatTrace(constraint, config, strategy);
+      formatTrace(constraint, config, strategy, groundingResult);
     }
 
     // If dry-run, show config and exit
@@ -115,8 +127,13 @@ export async function sendCommand(
       return;
     }
 
+    // Build final prompt with grounding context
+    const promptWithContext = groundingResult
+      ? formatGroundingContext(groundingResult.content, groundingResult.source) + '\n\n' + cleanPrompt
+      : cleanPrompt;
+
     // Build messages
-    const messages: Message[] = [{ role: 'user', content: cleanPrompt }];
+    const messages: Message[] = [{ role: 'user', content: promptWithContext }];
 
     // Send request
     if (stream) {

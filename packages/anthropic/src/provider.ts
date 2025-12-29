@@ -4,7 +4,7 @@ import type {
   MessageStreamEvent,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/messages';
-import { OperationalStrategy, type AbstractConstraint } from '@ctn/language';
+import { OperationalStrategy, CTNStrategy, type AbstractConstraint } from '@ctn/language';
 import {
   BaseCTNProvider,
   ProviderConnectionError,
@@ -26,7 +26,7 @@ import {
   type Message,
 } from '@ctn/core';
 import { getClaudeModels, resolveModelId, getModelConfig } from './models.js';
-import { OPERATIONAL_PROJECTION_MATRIX } from './projection.js';
+import { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX } from './projection.js';
 import { anthropicRendererPreferences } from './renderer-preferences.js';
 
 /**
@@ -77,6 +77,7 @@ export class AnthropicProvider extends BaseCTNProvider {
   readonly name = 'Anthropic';
   readonly supportedStrategies: readonly StrategySupport[] = [
     { name: 'operational', versionRange: '1.x' },
+    { name: 'ctn', versionRange: '1.x' },
   ];
 
   /**
@@ -118,9 +119,12 @@ export class AnthropicProvider extends BaseCTNProvider {
 
     this.defaultTimeout = timeout;
 
-    // Register Operational strategy projection
+    // Register strategy projections
     const operationalStrategy = new OperationalStrategy();
     this.registerProjection(operationalStrategy, OPERATIONAL_PROJECTION_MATRIX);
+
+    const ctnStrategy = new CTNStrategy();
+    this.registerProjection(ctnStrategy, CTN_PROJECTION_MATRIX);
   }
 
   /**
