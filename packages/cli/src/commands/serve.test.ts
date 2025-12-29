@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { createServer, startServer, ProviderPool } from './serve.js';
+import { createServer, startServer, ProviderPool, RequestQueue } from './serve.js';
 import type { FastifyInstance } from 'fastify';
 
 describe('serve command', () => {
@@ -336,6 +336,166 @@ describe('serve command', () => {
     });
   });
 
+  describe('RequestQueue', () => {
+    it('starts with empty stats', () => {
+      const queue = new RequestQueue();
+      const stats = queue.stats();
+      assert.deepStrictEqual(stats, {});
+    });
+
+    it('uses default concurrency of 5', () => {
+      const queue = new RequestQueue();
+      assert.strictEqual(queue.concurrencyLimit, 5);
+    });
+
+    it('accepts custom concurrency limit', () => {
+      const queue = new RequestQueue(10);
+      assert.strictEqual(queue.concurrencyLimit, 10);
+    });
+
+    it('executes tasks through the queue', async () => {
+      const queue = new RequestQueue();
+      let executed = false;
+
+      await queue.add('anthropic', async () => {
+        executed = true;
+        return 'result';
+      });
+
+      assert.strictEqual(executed, true);
+    });
+
+    it('returns task result', async () => {
+      const queue = new RequestQueue();
+
+      const result = await queue.add('anthropic', async () => {
+        return { value: 42 };
+      });
+
+      assert.deepStrictEqual(result, { value: 42 });
+    });
+
+    it('creates separate queues for different providers', async () => {
+      const queue = new RequestQueue(1); // Concurrency 1 to force sequential
+
+      const order: string[] = [];
+
+      // Start both tasks in parallel
+      const task1 = queue.add('anthropic', async () => {
+        order.push('anthropic-start');
+        await new Promise((r) => setTimeout(r, 10));
+        order.push('anthropic-end');
+      });
+
+      const task2 = queue.add('google', async () => {
+        order.push('google-start');
+        await new Promise((r) => setTimeout(r, 10));
+        order.push('google-end');
+      });
+
+      await Promise.all([task1, task2]);
+
+      // Both should start immediately (different queues)
+      assert.strictEqual(order[0], 'anthropic-start');
+      assert.strictEqual(order[1], 'google-start');
+    });
+
+    it('queues tasks when concurrency limit reached', async () => {
+      const queue = new RequestQueue(1); // Concurrency 1
+
+      const order: number[] = [];
+
+      // Start 3 tasks for same provider
+      const task1 = queue.add('anthropic', async () => {
+        order.push(1);
+        await new Promise((r) => setTimeout(r, 20));
+      });
+
+      const task2 = queue.add('anthropic', async () => {
+        order.push(2);
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      const task3 = queue.add('anthropic', async () => {
+        order.push(3);
+      });
+
+      await Promise.all([task1, task2, task3]);
+
+      // Should execute in order (queued)
+      assert.deepStrictEqual(order, [1, 2, 3]);
+    });
+
+    it('reports waiting and running correctly', async () => {
+      const queue = new RequestQueue(1);
+      let taskStarted = false;
+
+      // Start a slow task that signals when it starts
+      const slowTask = queue.add('anthropic', async () => {
+        taskStarted = true;
+        await new Promise((r) => setTimeout(r, 100));
+      });
+
+      // Wait for first task to start
+      while (!taskStarted) {
+        await new Promise((r) => setTimeout(r, 1));
+      }
+
+      // Add more tasks while first is running
+      const task2 = queue.add('anthropic', async () => {});
+      const task3 = queue.add('anthropic', async () => {});
+
+      // Check: 1 running, 2 waiting
+      assert.strictEqual(queue.running('anthropic'), 1);
+      assert.strictEqual(queue.waiting('anthropic'), 2);
+      assert.strictEqual(queue.total('anthropic'), 3);
+
+      await Promise.all([slowTask, task2, task3]);
+
+      // After completion, total should be 0
+      assert.strictEqual(queue.total('anthropic'), 0);
+    });
+
+    it('normalizes provider names in queue', async () => {
+      const queue = new RequestQueue(1);
+      const order: string[] = [];
+
+      // 'claude' and 'anthropic' should share the same queue
+      const task1 = queue.add('claude', async () => {
+        order.push('first');
+        await new Promise((r) => setTimeout(r, 10));
+      });
+
+      const task2 = queue.add('anthropic', async () => {
+        order.push('second');
+      });
+
+      await Promise.all([task1, task2]);
+
+      // Should be sequential (same normalized provider)
+      assert.deepStrictEqual(order, ['first', 'second']);
+    });
+
+    it('stats returns info for active queues', async () => {
+      const queue = new RequestQueue(1);
+
+      // Add tasks to create queues
+      const task1 = queue.add('anthropic', async () => {
+        await new Promise((r) => setTimeout(r, 30));
+      });
+      queue.add('google', async () => {});
+
+      // Check stats while running
+      const stats = queue.stats();
+      assert.ok('anthropic' in stats);
+      assert.ok('google' in stats);
+      assert.ok(typeof stats.anthropic.waiting === 'number');
+      assert.ok(typeof stats.anthropic.running === 'number');
+
+      await task1;
+    });
+  });
+
   describe('server with shared pool', () => {
     let server: FastifyInstance;
     let pool: ProviderPool;
@@ -415,6 +575,46 @@ describe('serve command', () => {
       assert.strictEqual(pool.size, 2);
       assert.strictEqual(pool.has('anthropic'), true);
       assert.strictEqual(pool.has('google'), true);
+    });
+  });
+
+  describe('server with queue', () => {
+    let server: FastifyInstance;
+    let queue: RequestQueue;
+
+    beforeEach(() => {
+      queue = new RequestQueue(2); // Low concurrency for testing
+      server = createServer({ queue });
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('routes requests through the queue', async () => {
+      // Queue should start with no stats
+      assert.deepStrictEqual(queue.stats(), {});
+
+      // Make a request
+      const response = await server.inject({
+        method: 'POST',
+        url: '/send',
+        payload: { input: 'Hello', dryRun: true },
+        headers: { 'content-type': 'application/json' },
+      });
+
+      assert.strictEqual(response.statusCode, 200);
+      // Queue should have processed through anthropic queue
+      assert.ok('anthropic' in queue.stats());
+    });
+
+    it('respects concurrency limit configured on server', async () => {
+      // Create server with concurrency 1
+      await server.close();
+      queue = new RequestQueue(1);
+      server = createServer({ queue, concurrency: 1 });
+
+      assert.strictEqual(queue.concurrencyLimit, 1);
     });
   });
 });

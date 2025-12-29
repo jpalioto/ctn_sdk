@@ -28,6 +28,7 @@ program
   .command('serve')
   .description('Start the CTN HTTP server')
   .option('--port <port>', 'Port to listen on', '14380')
+  .option('--concurrency <n>', 'Max concurrent requests per provider', '5')
   .action(serveAction);
 
 program.parse();

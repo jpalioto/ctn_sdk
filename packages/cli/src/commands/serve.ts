@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import PQueue from 'p-queue';
 import { processSend, type SendResult, type DryRunResult } from './send.js';
 import { AnthropicProvider } from '@ctn/anthropic';
 import { GoogleProvider } from '@ctn/google';
@@ -6,6 +7,7 @@ import { OpenAIProvider } from '@ctn/openai';
 import type { BaseCTNProvider } from '@ctn/core';
 
 const DEFAULT_PORT = 14380;
+const DEFAULT_CONCURRENCY = 5;
 const VERSION = '1.0.0';
 
 /**
@@ -79,6 +81,110 @@ export class ProviderPool {
   }
 }
 
+/**
+ * Per-provider request queues for concurrency control.
+ * Each provider has its own queue to prevent flooding API rate limits.
+ */
+export class RequestQueue {
+  private queues: Map<string, PQueue> = new Map();
+  private readonly concurrency: number;
+
+  constructor(concurrency: number = DEFAULT_CONCURRENCY) {
+    this.concurrency = concurrency;
+  }
+
+  /**
+   * Gets the queue for a provider, creating it if needed.
+   */
+  private getQueue(provider: string): PQueue {
+    const normalized = this.normalizeProvider(provider);
+
+    let queue = this.queues.get(normalized);
+    if (!queue) {
+      queue = new PQueue({ concurrency: this.concurrency });
+      this.queues.set(normalized, queue);
+    }
+    return queue;
+  }
+
+  /**
+   * Normalizes provider name to canonical form.
+   */
+  private normalizeProvider(name: string): string {
+    switch (name.toLowerCase()) {
+      case 'openai':
+      case 'gpt':
+        return 'openai';
+      case 'google':
+      case 'gemini':
+        return 'google';
+      case 'anthropic':
+      case 'claude':
+      default:
+        return 'anthropic';
+    }
+  }
+
+  /**
+   * Adds a task to the provider's queue.
+   * Returns a promise that resolves when the task completes.
+   */
+  async add<T>(provider: string, task: () => Promise<T>): Promise<T> {
+    const queue = this.getQueue(provider);
+    return queue.add(task) as Promise<T>;
+  }
+
+  /**
+   * Returns the number of waiting tasks for a provider.
+   * (Tasks in queue, not yet started)
+   */
+  waiting(provider: string): number {
+    const normalized = this.normalizeProvider(provider);
+    const queue = this.queues.get(normalized);
+    return queue?.size ?? 0;
+  }
+
+  /**
+   * Returns the number of currently running tasks for a provider.
+   */
+  running(provider: string): number {
+    const normalized = this.normalizeProvider(provider);
+    const queue = this.queues.get(normalized);
+    return queue?.pending ?? 0;
+  }
+
+  /**
+   * Returns the total count (waiting + running) for a provider.
+   */
+  total(provider: string): number {
+    const normalized = this.normalizeProvider(provider);
+    const queue = this.queues.get(normalized);
+    if (!queue) return 0;
+    return queue.size + queue.pending;
+  }
+
+  /**
+   * Returns stats for all active queues.
+   */
+  stats(): Record<string, { waiting: number; running: number }> {
+    const result: Record<string, { waiting: number; running: number }> = {};
+    for (const [provider, queue] of this.queues) {
+      result[provider] = {
+        waiting: queue.size,
+        running: queue.pending,
+      };
+    }
+    return result;
+  }
+
+  /**
+   * Returns the configured concurrency limit.
+   */
+  get concurrencyLimit(): number {
+    return this.concurrency;
+  }
+}
+
 export interface ServeOptions {
   port?: number;
 }
@@ -123,6 +229,10 @@ export interface ErrorResponse {
 export interface CreateServerOptions {
   /** Provider pool for client reuse. Created if not provided. */
   pool?: ProviderPool;
+  /** Request queue for concurrency control. Created if not provided. */
+  queue?: RequestQueue;
+  /** Concurrency limit per provider. Only used if queue not provided. */
+  concurrency?: number;
 }
 
 /**
@@ -130,6 +240,7 @@ export interface CreateServerOptions {
  */
 export function createServer(options: CreateServerOptions = {}): FastifyInstance {
   const pool = options.pool ?? new ProviderPool();
+  const queue = options.queue ?? new RequestQueue(options.concurrency);
 
   const server = Fastify({
     logger: false,
@@ -161,13 +272,16 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       const providerName = body.provider ?? 'anthropic';
       const providerInstance = pool.get(providerName);
 
-      const response = await processSend(body.input, {
-        provider: providerName,
-        model: body.model,
-        strategy: body.strategy,
-        dryRun: body.dryRun,
-        providerInstance,
-      });
+      // Route request through the provider's queue for concurrency control
+      const response = await queue.add(providerName, () =>
+        processSend(body.input, {
+          provider: providerName,
+          model: body.model,
+          strategy: body.strategy,
+          dryRun: body.dryRun,
+          providerInstance,
+        })
+      );
 
       // Return dry-run response
       if ('dryRun' in response) {
@@ -193,6 +307,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 export interface StartServerOptions extends ServeOptions {
   /** Provider pool for client reuse. Created if not provided. */
   pool?: ProviderPool;
+  /** Request queue for concurrency control. Created if not provided. */
+  queue?: RequestQueue;
+  /** Concurrency limit per provider. Only used if queue not provided. */
+  concurrency?: number;
 }
 
 /**
@@ -200,8 +318,10 @@ export interface StartServerOptions extends ServeOptions {
  */
 export async function startServer(options: StartServerOptions = {}): Promise<FastifyInstance> {
   const port = options.port ?? DEFAULT_PORT;
+  const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   const pool = options.pool ?? new ProviderPool();
-  const server = createServer({ pool });
+  const queue = options.queue ?? new RequestQueue(concurrency);
+  const server = createServer({ pool, queue });
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
@@ -216,6 +336,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   await server.listen({ port, host: '0.0.0.0' });
   console.log(`CTN server listening on http://localhost:${port}`);
   console.log(`Health check: http://localhost:${port}/health`);
+  console.log(`Concurrency limit: ${concurrency} per provider`);
 
   return server;
 }
@@ -223,13 +344,19 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
 /**
  * Serve command action for Commander.
  */
-export async function serveAction(options: { port?: string }): Promise<void> {
+export async function serveAction(options: { port?: string; concurrency?: string }): Promise<void> {
   const port = options.port ? parseInt(options.port, 10) : undefined;
+  const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : undefined;
 
   if (port !== undefined && (isNaN(port) || port < 1 || port > 65535)) {
     console.error('Error: Port must be a number between 1 and 65535');
     process.exit(1);
   }
 
-  await startServer({ port });
+  if (concurrency !== undefined && (isNaN(concurrency) || concurrency < 1)) {
+    console.error('Error: Concurrency must be a positive number');
+    process.exit(1);
+  }
+
+  await startServer({ port, concurrency });
 }
