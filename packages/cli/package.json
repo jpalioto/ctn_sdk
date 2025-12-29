@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "dev": "tsx src/cli.ts"
+    "dev": "tsx src/cli.ts",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "keywords": [
     "ctn",
@@ -31,7 +32,10 @@
     "@ctn/openai": "workspace:*",
     "@ctn/core": "workspace:*",
     "@ctn/language": "workspace:*",
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "fastify": "^5.2.1",
+    "p-queue": "^8.1.0",
+    "p-retry": "^6.2.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

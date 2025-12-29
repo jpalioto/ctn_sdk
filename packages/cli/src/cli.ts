@@ -2,6 +2,7 @@
 
 import { Command } from 'commander';
 import { sendCommand } from './commands/send.js';
+import { serveAction } from './commands/serve.js';
 
 const program = new Command();
 
@@ -22,5 +23,11 @@ program
   .option('--trace', 'Show composition and projection traces')
   .option('--dry-run', 'Show projected config without sending')
   .action(sendCommand);
+
+program
+  .command('serve')
+  .description('Start the CTN HTTP server')
+  .option('--port <port>', 'Port to listen on', '14380')
+  .action(serveAction);
 
 program.parse();
