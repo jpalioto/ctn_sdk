@@ -267,6 +267,52 @@ describe('stripSensitiveInfo', () => {
     // Should not have multiple consecutive [redacted]
     assert.ok(!result.includes('[redacted] [redacted]'));
   });
+
+  describe('adversarial injection attempts', () => {
+    it('strips paths with zero-width space injection', () => {
+      // Attacker tries to hide path using zero-width space
+      const input = 'Error at /home/\u200Buser/code/secret.ts';
+      const result = stripSensitiveInfo(input);
+
+      assert.ok(!result.includes('home'));
+      assert.ok(!result.includes('user'));
+      assert.ok(!result.includes('secret'));
+    });
+
+    it('strips paths with RTL override injection', () => {
+      // Attacker tries to use RTL override to confuse path detection
+      const input = 'Error at /home/user\u202E/code.ts';
+      const result = stripSensitiveInfo(input);
+
+      assert.ok(!result.includes('home'));
+      assert.ok(!result.includes('user'));
+    });
+
+    it('strips Windows paths with zero-width injection', () => {
+      const input = 'Error at C:\\Users\\\u200Bjohn\\code\\file.ts';
+      const result = stripSensitiveInfo(input);
+
+      assert.ok(!result.includes('Users'));
+      assert.ok(!result.includes('john'));
+    });
+
+    it('strips paths with null byte injection', () => {
+      // Null bytes in path (though less common in JS strings)
+      const input = 'Error at /home/user\x00/code/file.ts';
+      const result = stripSensitiveInfo(input);
+
+      assert.ok(!result.includes('/home'));
+    });
+
+    it('handles bidirectional embedding around paths', () => {
+      // Attacker tries to embed path in RTL context
+      const input = 'Error \u202B/home/user/secret.ts\u202C happened';
+      const result = stripSensitiveInfo(input);
+
+      assert.ok(!result.includes('home'));
+      assert.ok(!result.includes('secret'));
+    });
+  });
 });
 
 describe('getErrorStatusCode', () => {

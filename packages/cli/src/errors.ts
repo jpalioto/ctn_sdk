@@ -133,9 +133,22 @@ const SENSITIVE_PATTERNS = [
 /**
  * Removes sensitive information from error messages.
  * Used as a safety net - prefer using typed errors.
+ *
+ * Security: First strips invisible characters that could be used
+ * to bypass path detection patterns (zero-width, RTL controls, etc.)
  */
 export function stripSensitiveInfo(message: string): string {
-  let sanitized = message;
+  // First, remove invisible characters that could bypass pattern matching:
+  // - Zero-width characters (\u200B-\u200D)
+  // - Directional marks/overrides (\u200E-\u200F, \u202A-\u202E)
+  // - Bidi isolate controls (\u2066-\u2069)
+  // - Byte order mark (\uFEFF)
+  // - Null bytes and control chars
+  let sanitized = message
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '');
+
+  // Now apply sensitive pattern matching
   for (const pattern of SENSITIVE_PATTERNS) {
     sanitized = sanitized.replace(pattern, '[redacted]');
   }

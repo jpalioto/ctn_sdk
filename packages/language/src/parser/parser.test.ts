@@ -282,6 +282,221 @@ describe('Parser', () => {
     });
   });
 
+  describe('adversarial security inputs', () => {
+    it('homoglyph Cyrillic а does not match analytical', () => {
+      // @аnalytical (Cyrillic U+0430 at start) should NOT match @analytical
+      // Cyrillic 'а' looks identical to ASCII 'a' but is a different codepoint
+      // Since Cyrillic doesn't match \w (ASCII-only), the regex doesn't recognize it as a constraint
+      const warnings: string[] = [];
+      const result = parse('@\u0430nalytical hello', {
+        onUnknownConstraint: (name) => warnings.push(name),
+      });
+
+      // Not even recognized as a constraint pattern (Cyrillic doesn't match \w)
+      assert.equal(result.constraints.length, 0);
+      // Passes through as literal text unchanged
+      assert.equal(result.prompt, '@\u0430nalytical hello');
+      // No warning - not recognized as a constraint at all
+      assert.deepEqual(warnings, []);
+    });
+
+    it('homoglyph Cyrillic а in middle of name does not match', () => {
+      // @analуtical (Cyrillic у U+0443 in middle) should not match @analytical
+      // The regex matches @anal then stops at non-ASCII
+      const warnings: string[] = [];
+      const result = parse('@anal\u0443tical hello', {
+        onUnknownConstraint: (name) => warnings.push(name),
+      });
+
+      // 'anal' is matched but not a known constraint
+      assert.equal(result.constraints.length, 0);
+      // Warning should fire for the partial match 'anal'
+      assert.deepEqual(warnings, ['anal']);
+    });
+
+    it('zero-width chars in constraint name are stripped before matching', () => {
+      // @ana\u200Blytical → should become @analytical after sanitization
+      const result = parse('@ana\u200Blytical hello');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'analytical');
+      assert.equal(result.prompt, 'hello');
+    });
+
+    it('zero-width space between @ and name is stripped', () => {
+      // @\u200Banalytical → @ + ZWSP + analytical → should match @analytical
+      const result = parse('@\u200Banalytical hello');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'analytical');
+    });
+
+    it('RTL override character is stripped', () => {
+      const result = parse('@analytical\u202E evil');
+
+      // RTL override should be stripped, leaving clean text
+      assert.equal(result.constraints.length, 1);
+      assert.ok(!result.prompt.includes('\u202E'));
+      assert.equal(result.prompt, 'evil');
+    });
+
+    it('null byte in constraint name is stripped', () => {
+      // @analy\x00tical → after stripping null, becomes @analytical
+      const result = parse('@analy\x00tical hello');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'analytical');
+    });
+
+    it('control characters in prompt are stripped', () => {
+      const result = parse('@analytical hello\x07world\x08test');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.prompt, 'helloworldtest');
+    });
+
+    it('multiple invisible characters do not break parsing', () => {
+      // Mix of zero-width, RTL, and control chars
+      const result = parse('@\u200Bana\u200Clyt\u200Dical\u202E \x00hello');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'analytical');
+      assert.equal(result.prompt, 'hello');
+    });
+
+    it('bidirectional embedding does not hide constraint injection', () => {
+      // Attempt to hide malicious text using RTL embedding
+      const result = parse('@analytical \u202Bhidden\u202C visible');
+
+      assert.equal(result.constraints.length, 1);
+      // RTL embedding stripped, text remains
+      assert.ok(!result.prompt.includes('\u202B'));
+      assert.ok(!result.prompt.includes('\u202C'));
+      assert.ok(result.prompt.includes('hidden'));
+      assert.ok(result.prompt.includes('visible'));
+    });
+
+    it('preserves original source with invisible chars for debugging', () => {
+      const original = '@ana\u200Blytical hello';
+      const result = parse(original);
+
+      // source should preserve original for debugging
+      assert.equal(result.source, original);
+      // But prompt should be sanitized
+      assert.ok(!result.prompt.includes('\u200B'));
+    });
+
+    it('zero-width in parameter value is stripped', () => {
+      const result = parse('@lastN[n=5\u200B] hello');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.params.n, 5);
+    });
+
+    it('handles LTR/RTL marks in various positions', () => {
+      // LTR mark at start, RTL mark in middle
+      const result = parse('\u200E@analytical \u200Fhello');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'analytical');
+      assert.equal(result.prompt, 'hello');
+    });
+
+    it('strips bidi isolate controls (U+2066-2069)', () => {
+      // Bidi isolate characters should be stripped
+      const result = parse('@analy\u2066\u2067\u2068\u2069tical hello');
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'analytical');
+      assert.equal(result.prompt, 'hello');
+    });
+  });
+
+  describe('external review test cases', () => {
+    it('test 1: NFD é at start does not interfere with constraint', () => {
+      // NFD é (e + combining acute) at start → not a constraint
+      // Parser doesn't do NFC normalization, but sanitization before parsing should
+      const nfdE = '\u0065\u0301'; // e + combining acute accent
+      const input = nfdE + '@terse text';
+      const result = parse(input);
+
+      // The NFD characters are not stripped by parser sanitization
+      // The result depends on whether NFC normalization happens
+      // Since parser only strips control/zero-width, NFD is preserved
+      assert.equal(result.constraints.length, 0);
+      assert.ok(result.prompt.includes('@terse'));
+    });
+
+    it('test 3: ZWSP at start and BOM in middle are stripped, @creative parsed', () => {
+      // ZWSP at start, BOM in middle of constraint name
+      const input = '\u200B@crea\uFEFFtive action';
+      const result = parse(input);
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'creative');
+      assert.equal(result.prompt, 'action');
+    });
+
+    it('test 4: control chars stripped, tab and newline preserved', () => {
+      // \x07 = bell, \x00 = null, \x7F = DEL - all stripped
+      // \t and \n preserved in prompt
+      const input = '@precise\x07 T\x00ab\t\n\x7FEnd';
+      const result = parse(input);
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'precise');
+      assert.equal(result.prompt, 'Tab\t\nEnd');
+    });
+
+    it('test 5: NBSP (U+00A0) acts as delimiter', () => {
+      // NBSP should act as whitespace delimiter between constraint and prompt
+      // Note: NBSP at start of prompt is trimmed by parser's whitespace cleanup
+      const input = '@terse\u00A0nospace';
+      const result = parse(input);
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'terse');
+      // NBSP acts as delimiter, gets trimmed from prompt start
+      assert.equal(result.prompt, 'nospace');
+    });
+
+    it('test 5b: NBSP in middle of prompt is preserved', () => {
+      // NBSP in the middle of prompt should be preserved
+      const input = '@terse hello\u00A0world';
+      const result = parse(input);
+
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.prompt, 'hello\u00A0world');
+      assert.ok(result.prompt.includes('\u00A0'));
+    });
+
+    it('test 8: combined BOM + NUL in constraint + bidi attack', () => {
+      // BOM at start, NUL in constraint name, bidi at end
+      const input = '\uFEFF@ana\x00lytical \u202Epmorp\u202C';
+      const result = parse(input);
+
+      // BOM stripped, NUL stripped → @analytical matched
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'analytical');
+      // Bidi stripped from prompt
+      assert.ok(!result.prompt.includes('\u202E'));
+      assert.ok(!result.prompt.includes('\u202C'));
+      assert.equal(result.prompt, 'pmorp');
+    });
+
+    it('combined attack with multiple invisible chars throughout', () => {
+      // Multiple layers of attack vectors
+      const input = '\uFEFF\u200B@pre\x00\u200Ccise\u200D\u202E test\u2066\u2069';
+      const result = parse(input);
+
+      // All invisible chars stripped → @precise should match
+      assert.equal(result.constraints.length, 1);
+      assert.equal(result.constraints[0]!.name, 'precise');
+      // Prompt should be clean
+      assert.equal(result.prompt, 'test');
+    });
+  });
+
   describe('start-only parsing (default behavior)', () => {
     it('parses constraint at start', () => {
       const result = parse('@analytical hello');

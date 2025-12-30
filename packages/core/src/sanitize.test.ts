@@ -114,6 +114,143 @@ describe('sanitizeInput', () => {
     });
   });
 
+  describe('bidirectional text control stripping', () => {
+    it('removes left-to-right mark', () => {
+      const input = 'hello\u200Eworld';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes right-to-left mark', () => {
+      const input = 'hello\u200Fworld';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes left-to-right embedding', () => {
+      const input = 'hello\u202Aworld';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes right-to-left embedding', () => {
+      const input = 'hello\u202Bworld';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes pop directional formatting', () => {
+      const input = 'hello\u202Cworld';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes left-to-right override', () => {
+      const input = 'hello\u202Dworld';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes right-to-left override (most dangerous)', () => {
+      // RTL override can make "hello" display as "olleh"
+      const input = 'hello\u202Eworld';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes multiple bidirectional controls', () => {
+      const input = '\u202Ehello\u200E\u200Fworld\u202D';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('handles RTL attack attempting to hide text', () => {
+      // Attacker tries: "good\u202Elive" which displays as "goodevil"
+      const input = 'good\u202Elive';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'goodlive');
+      assert.ok(!result.includes('\u202E'));
+    });
+  });
+
+  describe('bidi isolate controls stripping', () => {
+    it('removes left-to-right isolate', () => {
+      const input = 'hello\u2066world';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes right-to-left isolate', () => {
+      const input = 'hello\u2067world';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes first strong isolate', () => {
+      const input = 'hello\u2068world';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes pop directional isolate', () => {
+      const input = 'hello\u2069world';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'helloworld');
+    });
+
+    it('removes all bidi isolate controls in combination', () => {
+      const input = '\u2066start\u2067middle\u2068end\u2069';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'startmiddleend');
+    });
+  });
+
+  describe('external review test cases', () => {
+    it('normalizes NFD to NFC before other processing', () => {
+      // NFD é (e + combining acute) at start → normalized to NFC é
+      const nfdE = '\u0065\u0301'; // e + combining acute accent
+      const input = nfdE + '@terse text';
+      const result = sanitizeInput(input);
+      // Should normalize to composed é, preserving the rest
+      assert.strictEqual(result, 'é@terse text');
+    });
+
+    it('strips control chars but preserves tab and newline', () => {
+      // \x07 = bell, \x00 = null, \x7F = DEL - all stripped
+      // \t and \n preserved
+      const input = 'T\x00ab\t\n\x07\x7FEnd';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'Tab\t\nEnd');
+    });
+
+    it('preserves NBSP as valid whitespace', () => {
+      // NBSP (U+00A0) should NOT be stripped - it's valid whitespace
+      const input = 'hello\u00A0world';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'hello\u00A0world');
+      assert.ok(result.includes('\u00A0'));
+    });
+
+    it('handles combined BOM + NUL + bidi attack', () => {
+      // Combined attack: BOM at start, NUL in middle, bidi at end
+      const input = '\uFEFFana\x00lytical \u202Epmorp\u202C';
+      const result = sanitizeInput(input);
+      // BOM stripped, NUL stripped, bidi stripped
+      assert.strictEqual(result, 'analytical pmorp');
+      assert.ok(!result.includes('\uFEFF'));
+      assert.ok(!result.includes('\x00'));
+      assert.ok(!result.includes('\u202E'));
+      assert.ok(!result.includes('\u202C'));
+    });
+
+    it('handles ZWSP at start and BOM in middle', () => {
+      // ZWSP at start, BOM in middle → both stripped
+      const input = '\u200Bcrea\uFEFFtive action';
+      const result = sanitizeInput(input);
+      assert.strictEqual(result, 'creative action');
+    });
+  });
+
   describe('normal text handling', () => {
     it('preserves normal ASCII text unchanged', () => {
       const input = 'Hello, World! 123';
@@ -220,6 +357,26 @@ describe('validateInput', () => {
       const input = emoji.repeat(count);
       const result = validateInput(input);
       assert.strictEqual(result.valid, false);
+    });
+
+    it('external review: exactly 100KB is valid', () => {
+      // MAX_INPUT_SIZE is 100000 bytes
+      // '@casual ' is 8 bytes, so we need 100000 - 8 = 99992 more bytes
+      const prefix = '@casual ';
+      const paddingLength = MAX_INPUT_SIZE - Buffer.byteLength(prefix);
+      const input = prefix + 'A'.repeat(paddingLength);
+      assert.strictEqual(Buffer.byteLength(input), MAX_INPUT_SIZE);
+      const result = validateInput(input);
+      assert.strictEqual(result.valid, true);
+    });
+
+    it('external review: 100KB + 1 is invalid', () => {
+      // One byte over the limit
+      const input = 'A'.repeat(MAX_INPUT_SIZE + 1);
+      assert.strictEqual(Buffer.byteLength(input), MAX_INPUT_SIZE + 1);
+      const result = validateInput(input);
+      assert.strictEqual(result.valid, false);
+      assert.ok(result.reason?.includes('exceeds maximum size'));
     });
   });
 

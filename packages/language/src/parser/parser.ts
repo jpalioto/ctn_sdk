@@ -6,6 +6,31 @@ import type {
 import { MalformedConstraintError } from '../schemas/index.js';
 
 /**
+ * Security-critical character sanitization for constraint parsing.
+ * Removes characters that could be used to bypass constraint matching:
+ * - Zero-width characters (can hide in constraint names)
+ * - Bidirectional text controls (can reverse/hide text display)
+ * - Null bytes and other control characters
+ *
+ * This is defense-in-depth. Callers should also use sanitizeInput() from @ctn/core.
+ *
+ * @param input - Raw input to sanitize
+ * @returns Sanitized input safe for constraint parsing
+ */
+function sanitizeForParsing(input: string): string {
+  // Remove security-critical invisible characters:
+  // - \x00-\x08, \x0B, \x0C, \x0E-\x1F: Control characters (keep \t \n \r)
+  // - \x7F: DEL character
+  // - \u200B-\u200F: Zero-width and directional marks
+  // - \u202A-\u202E: Bidirectional embedding/override controls
+  // - \u2066-\u2069: Bidi isolate controls
+  // - \uFEFF: Byte order mark
+  return input
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '');
+}
+
+/**
  * Result of parsing an input string for constraints.
  */
 export interface ParseResult {
@@ -158,31 +183,34 @@ export function parse(input: string, options: ParserOptions = {}): ParseResult {
     onUnknownConstraint = defaultWarning,
   } = options;
 
-  // If parsing disabled, return input as-is
+  // Security: sanitize input to remove invisible characters that could bypass matching
+  const sanitizedInput = sanitizeForParsing(input);
+
+  // If parsing disabled, return sanitized input as-is
   if (!parseConstraints) {
     return {
       constraints: [],
-      prompt: input,
+      prompt: sanitizedInput,
       source: input,
     };
   }
 
   // If boundary specified, extract and parse only within boundary
   if (constraintBoundary) {
-    return parseWithBoundary(input, constraintBoundary, allowedConstraints);
+    return parseWithBoundary(sanitizedInput, constraintBoundary, allowedConstraints, input);
   }
 
   // New default: start-only parsing with built-in allowlist
   if (startOnly) {
-    return parseConstraintsFromStart(input, {
+    return parseConstraintsFromStart(sanitizedInput, {
       allowedConstraints,
       useBuiltinAllowlist,
       onUnknownConstraint,
-    });
+    }, input);
   }
 
   // Legacy behavior: parse constraints anywhere in text
-  return parseConstraintsFromText(input, allowedConstraints);
+  return parseConstraintsFromText(sanitizedInput, allowedConstraints, input);
 }
 
 /**
@@ -191,7 +219,8 @@ export function parse(input: string, options: ParserOptions = {}): ParseResult {
 function parseWithBoundary(
   input: string,
   boundary: readonly [string, string],
-  allowedConstraints?: readonly string[]
+  allowedConstraints: readonly string[] | undefined,
+  originalSource: string
 ): ParseResult {
   const [startDelim, endDelim] = boundary;
   const startIdx = input.indexOf(startDelim);
@@ -201,7 +230,7 @@ function parseWithBoundary(
     return {
       constraints: [],
       prompt: input,
-      source: input,
+      source: originalSource,
     };
   }
 
@@ -211,7 +240,7 @@ function parseWithBoundary(
     throw new MalformedConstraintError(
       startIdx,
       `Unclosed constraint boundary: missing '${endDelim}'`,
-      input
+      originalSource
     );
   }
 
@@ -221,7 +250,7 @@ function parseWithBoundary(
   const afterBoundary = input.slice(endIdx + endDelim.length);
 
   // Parse constraints from boundary content
-  const boundaryResult = parseConstraintsFromText(boundaryContent, allowedConstraints);
+  const boundaryResult = parseConstraintsFromText(boundaryContent, allowedConstraints, originalSource);
 
   // Reconstruct prompt without boundary
   const prompt = (beforeBoundary + boundaryResult.prompt + afterBoundary).trim();
@@ -229,7 +258,7 @@ function parseWithBoundary(
   return {
     constraints: boundaryResult.constraints,
     prompt,
-    source: input,
+    source: originalSource,
   };
 }
 
@@ -238,7 +267,8 @@ function parseWithBoundary(
  */
 function parseConstraintsFromText(
   input: string,
-  allowedConstraints?: readonly string[]
+  allowedConstraints: readonly string[] | undefined,
+  originalSource: string
 ): ParseResult {
   const constraints: ParsedConstraint[] = [];
   const allowedSet = allowedConstraints ? new Set(allowedConstraints) : null;
@@ -271,7 +301,7 @@ function parseConstraintsFromText(
     const startPos = match.index;
 
     // Parse parameters
-    const params = paramsStr ? parseParams(paramsStr, name, input) : {};
+    const params = paramsStr ? parseParams(paramsStr, name, originalSource) : {};
 
     // Add constraint (will be reversed later)
     constraints.unshift({
@@ -290,7 +320,7 @@ function parseConstraintsFromText(
   return {
     constraints,
     prompt,
-    source: input,
+    source: originalSource,
   };
 }
 
@@ -317,7 +347,8 @@ interface StartParseOptions {
  */
 function parseConstraintsFromStart(
   input: string,
-  options: StartParseOptions
+  options: StartParseOptions,
+  originalSource: string
 ): ParseResult {
   const { allowedConstraints, useBuiltinAllowlist, onUnknownConstraint } = options;
   const constraints: ParsedConstraint[] = [];
@@ -380,7 +411,7 @@ function parseConstraintsFromStart(
     }
 
     // Parse parameters (may throw MalformedConstraintError)
-    const params = paramsStr ? parseParams(paramsStr, name, input) : {};
+    const params = paramsStr ? parseParams(paramsStr, name, originalSource) : {};
 
     // Valid constraint found
     constraints.push({
@@ -399,7 +430,7 @@ function parseConstraintsFromStart(
   const result: ParseResult = {
     constraints,
     prompt,
-    source: input,
+    source: originalSource,
   };
 
   // Only add unknownConstraints if there are any

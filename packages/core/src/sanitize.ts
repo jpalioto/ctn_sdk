@@ -33,12 +33,27 @@ export function sanitizeInput(input: string): string {
   // So we manually handle this
   sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
 
-  // Remove zero-width characters
-  // \u200B = zero-width space
-  // \u200C = zero-width non-joiner
-  // \u200D = zero-width joiner
-  // \uFEFF = byte order mark / zero-width no-break space
-  sanitized = sanitized.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  // Remove zero-width characters and bidirectional control characters
+  // Zero-width:
+  //   \u200B = zero-width space
+  //   \u200C = zero-width non-joiner
+  //   \u200D = zero-width joiner
+  // Bidirectional text controls (security risk - can make text appear different):
+  //   \u200E = left-to-right mark
+  //   \u200F = right-to-left mark
+  //   \u202A = left-to-right embedding
+  //   \u202B = right-to-left embedding
+  //   \u202C = pop directional formatting
+  //   \u202D = left-to-right override
+  //   \u202E = right-to-left override (most dangerous - reverses displayed text)
+  // Bidi isolates (newer Unicode controls):
+  //   \u2066 = left-to-right isolate
+  //   \u2067 = right-to-left isolate
+  //   \u2068 = first strong isolate
+  //   \u2069 = pop directional isolate
+  // BOM:
+  //   \uFEFF = byte order mark / zero-width no-break space
+  sanitized = sanitized.replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '');
 
   return sanitized;
 }
