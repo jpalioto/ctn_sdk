@@ -5,7 +5,24 @@ import { processSend, type SendResult, type DryRunResult } from './send.js';
 import { AnthropicProvider } from '@ctn/anthropic';
 import { GoogleProvider } from '@ctn/google';
 import { OpenAIProvider } from '@ctn/openai';
-import type { BaseCTNProvider } from '@ctn/core';
+import { validateInput, type BaseCTNProvider } from '@ctn/core';
+import {
+  sanitizeError,
+  getErrorStatusCode,
+  type SafeError,
+  type ErrorLogger,
+  silentErrorLogger,
+  consoleErrorLogger,
+  ErrorCode,
+} from '../errors.js';
+import {
+  createLogger,
+  parseLogLevel,
+  silentLogger as silentAppLogger,
+  type Logger,
+  type LogLevel,
+  type RequestLogEntry as AppRequestLogEntry,
+} from '../logger.js';
 
 const DEFAULT_PORT = 14380;
 const DEFAULT_CONCURRENCY = 5;
@@ -447,6 +464,7 @@ export interface SendDryRunResponse {
 
 export interface ErrorResponse {
   error: string;
+  code: string;
 }
 
 export interface StatsResponse {
@@ -472,15 +490,27 @@ export interface CreateServerOptions {
   retry?: Partial<RetryConfig>;
   /** Server statistics tracker. Created if not provided. */
   stats?: ServerStats;
-  /** Request logger. Uses silent logger if not provided. */
+  /** Request logger. Uses silent logger if not provided. @deprecated Use appLogger instead */
   logger?: RequestLogger;
+  /** Error logger for internal errors. Uses silent logger if not provided. */
+  errorLogger?: ErrorLogger;
+  /** Application logger with level filtering and redaction. */
+  appLogger?: Logger;
 }
 
-// Extend Fastify request to include timing info
+// Extend Fastify request to include timing and debug info
 declare module 'fastify' {
   interface FastifyRequest {
     startTime?: number;
     provider?: string;
+    /** Input text for debug logging */
+    requestInput?: string;
+    /** Response data for debug logging */
+    responseData?: {
+      outputLength?: number;
+      tokensIn?: number;
+      tokensOut?: number;
+    };
   }
 }
 
@@ -493,6 +523,8 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   const retryConfig: RetryConfig = { ...defaultRetryConfig, ...options.retry };
   const stats = options.stats ?? new ServerStats();
   const logger = options.logger ?? silentLogger;
+  const errorLogger = options.errorLogger ?? silentErrorLogger;
+  const appLogger = options.appLogger ?? silentAppLogger;
 
   const server = Fastify({
     logger: false,
@@ -513,14 +545,41 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
     // Log request (skip /stats to avoid noise)
     if (path !== '/stats') {
-      logger.log({
+      // Build log entry
+      const logEntry: AppRequestLogEntry = {
         timestamp: new Date().toISOString(),
         method: request.method,
         path,
         status: reply.statusCode,
         duration_ms: duration,
         provider: request.provider,
-      });
+      };
+
+      // Add debug fields if enabled
+      if (appLogger.isLevelEnabled('debug')) {
+        if (request.requestInput) {
+          logEntry.input = appLogger.redact(request.requestInput);
+        }
+        if (request.responseData) {
+          logEntry.output_length = request.responseData.outputLength;
+          logEntry.tokens_in = request.responseData.tokensIn;
+          logEntry.tokens_out = request.responseData.tokensOut;
+        }
+      }
+
+      // Use new appLogger if available, fall back to legacy logger
+      if (options.appLogger) {
+        appLogger.logRequest(logEntry);
+      } else {
+        logger.log({
+          timestamp: logEntry.timestamp,
+          method: logEntry.method,
+          path: logEntry.path,
+          status: logEntry.status,
+          duration_ms: logEntry.duration_ms,
+          provider: logEntry.provider,
+        });
+      }
     }
   });
 
@@ -550,10 +609,17 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
   }>('/send', async (request, reply) => {
     const body = request.body;
 
-    // Validate input
-    if (!body || typeof body.input !== 'string' || body.input.trim() === '') {
+    // Check request structure
+    if (!body || typeof body.input !== 'string') {
       reply.status(400);
-      return { error: 'Missing required field: input' };
+      return { error: 'Missing required field: input', code: ErrorCode.VALIDATION_ERROR };
+    }
+
+    // Validate input content (empty check, size limit)
+    const validation = validateInput(body.input);
+    if (!validation.valid) {
+      reply.status(400);
+      return { error: validation.reason ?? 'Invalid input', code: ErrorCode.VALIDATION_ERROR };
     }
 
     try {
@@ -561,8 +627,9 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       const providerName = body.provider ?? 'anthropic';
       const providerInstance = pool.get(providerName);
 
-      // Store provider for logging
+      // Store provider and input for logging
       request.provider = providerName;
+      request.requestInput = body.input;
 
       // Route request through queue with retry for transient failures
       const response = await queue.add(providerName, () =>
@@ -582,19 +649,29 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
       // Return dry-run response
       if ('dryRun' in response) {
+        // Store response data for debug logging
+        request.responseData = {
+          outputLength: response.dryRun.systemPrompt.length + response.dryRun.userPrompt.length,
+        };
         return response.dryRun;
       }
+
+      // Store response data for debug logging
+      request.responseData = {
+        outputLength: response.result.output.length,
+        tokensIn: response.result.tokens.input,
+        tokensOut: response.result.tokens.output,
+      };
 
       // Return normal response
       return response.result;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'An unexpected error occurred';
-
-      // Determine status code based on error type
-      const statusCode = message.includes('API key') ? 400 : 500;
+      // Sanitize error - never expose stack traces or internal paths
+      const safeError = sanitizeError(error, { logger: errorLogger });
+      const statusCode = getErrorStatusCode(error);
 
       reply.status(statusCode);
-      return { error: message };
+      return safeError;
     }
   });
 
@@ -612,8 +689,14 @@ export interface StartServerOptions extends ServeOptions {
   retry?: Partial<RetryConfig>;
   /** Server statistics tracker. Created if not provided. */
   stats?: ServerStats;
-  /** Request logger. Uses JSON logger if not provided. */
+  /** Request logger. Uses JSON logger if not provided. @deprecated Use logLevel/redactPrompts instead */
   logger?: RequestLogger;
+  /** Error logger for internal errors. Uses console logger if not provided. */
+  errorLogger?: ErrorLogger;
+  /** Log level (error, warn, info, debug). Default: 'info' */
+  logLevel?: LogLevel;
+  /** If true, redact prompt content in logs. Default: false */
+  redactPrompts?: boolean;
 }
 
 /**
@@ -623,24 +706,31 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   const port = options.port ?? DEFAULT_PORT;
   const concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   const retries = options.retry?.retries ?? DEFAULT_RETRIES;
+  const logLevel = options.logLevel ?? 'info';
+  const redactPrompts = options.redactPrompts ?? false;
   const pool = options.pool ?? new ProviderPool();
   const queue = options.queue ?? new RequestQueue(concurrency);
   const stats = options.stats ?? new ServerStats();
-  const logger = options.logger ?? jsonLogger; // Use JSON logger in production
+  const logger = options.logger ?? jsonLogger; // Use JSON logger in production (legacy)
+  const errorLog = options.errorLogger ?? consoleErrorLogger; // Use console logger in production
+
+  // Create app logger with configured level and redaction
+  const appLogger = createLogger({
+    level: logLevel,
+    redactPrompts,
+  });
+
   const retryConfig: Partial<RetryConfig> = {
     ...options.retry,
-    // Add default logging for retries
+    // Add default logging for retries using app logger
     onRetry: options.retry?.onRetry ?? ((error, provider) => {
-      console.log(JSON.stringify({
-        timestamp: new Date().toISOString(),
-        level: 'warn',
-        message: `Retry attempt ${error.attemptNumber}/${retries}`,
+      appLogger.warn(`Retry attempt ${error.attemptNumber}/${retries}`, {
         provider,
         error: error.message,
-      }));
+      });
     }),
   };
-  const server = createServer({ pool, queue, retry: retryConfig, stats, logger });
+  const server = createServer({ pool, queue, retry: retryConfig, stats, logger, errorLogger: errorLog, appLogger });
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
@@ -658,6 +748,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
   console.log(`Stats: http://localhost:${port}/stats`);
   console.log(`Concurrency limit: ${concurrency} per provider`);
   console.log(`Retry attempts: ${retries} (exponential backoff with jitter)`);
+  console.log(`Log level: ${logLevel}${redactPrompts ? ' (prompts redacted)' : ''}`);
 
   return server;
 }
@@ -665,10 +756,18 @@ export async function startServer(options: StartServerOptions = {}): Promise<Fas
 /**
  * Serve command action for Commander.
  */
-export async function serveAction(options: { port?: string; concurrency?: string; retries?: string }): Promise<void> {
+export async function serveAction(options: {
+  port?: string;
+  concurrency?: string;
+  retries?: string;
+  logLevel?: string;
+  redactPrompts?: boolean;
+}): Promise<void> {
   const port = options.port ? parseInt(options.port, 10) : undefined;
   const concurrency = options.concurrency ? parseInt(options.concurrency, 10) : undefined;
   const retries = options.retries ? parseInt(options.retries, 10) : undefined;
+  const logLevel = options.logLevel ? parseLogLevel(options.logLevel) : undefined;
+  const redactPrompts = options.redactPrompts ?? false;
 
   if (port !== undefined && (isNaN(port) || port < 1 || port > 65535)) {
     console.error('Error: Port must be a number between 1 and 65535');
@@ -685,5 +784,16 @@ export async function serveAction(options: { port?: string; concurrency?: string
     process.exit(1);
   }
 
-  await startServer({ port, concurrency, retry: retries !== undefined ? { retries } : undefined });
+  if (options.logLevel && !['error', 'warn', 'info', 'debug'].includes(options.logLevel.toLowerCase())) {
+    console.error('Error: Log level must be one of: error, warn, info, debug');
+    process.exit(1);
+  }
+
+  await startServer({
+    port,
+    concurrency,
+    retry: retries !== undefined ? { retries } : undefined,
+    logLevel,
+    redactPrompts,
+  });
 }

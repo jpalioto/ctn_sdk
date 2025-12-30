@@ -7,7 +7,7 @@ import {
   type ResolvedConstraint,
   type AbstractConstraint,
 } from '@ctn/language';
-import type { Message, ProjectedConfig, BaseCTNProvider } from '@ctn/core';
+import { sanitizeInput, type Message, type ProjectedConfig, type BaseCTNProvider } from '@ctn/core';
 import { formatTrace, formatDryRun } from '../output/formatter.js';
 import {
   fetchGrounding,
@@ -120,6 +120,9 @@ export async function processSend(
   input: string,
   options: ProcessSendOptions
 ): Promise<{ result: SendResult; trace?: TraceInfo } | { dryRun: DryRunResult; trace?: TraceInfo }> {
+  // Sanitize input before processing
+  const sanitizedInput = sanitizeInput(input);
+
   const providerName = options.provider ?? 'anthropic';
   const strategyName = options.strategy ?? 'operational';
 
@@ -136,8 +139,8 @@ export async function processSend(
     groundingResult = await fetchGrounding(options.ground);
   }
 
-  // Parse prompt and extract constraints
-  const { constraint, cleanPrompt } = parsePromptWithConstraints(input, strategy);
+  // Parse prompt and extract constraints (using sanitized input)
+  const { constraint, cleanPrompt } = parsePromptWithConstraints(sanitizedInput, strategy);
 
   // Project to provider-specific config
   const config: ProjectedConfig = provider.project(constraint, model);
@@ -201,6 +204,9 @@ export async function sendCommand(
   const { provider: providerName, model: modelOption, strategy: strategyName, ground, stream, trace, dryRun } = options;
 
   try {
+    // Sanitize input for all paths
+    const sanitizedPrompt = sanitizeInput(prompt);
+
     // For streaming, we need special handling
     if (stream && !dryRun) {
       // Initialize strategy and provider
@@ -214,8 +220,8 @@ export async function sendCommand(
         groundingResult = await fetchGrounding(ground);
       }
 
-      // Parse prompt and extract constraints
-      const { constraint, cleanPrompt } = parsePromptWithConstraints(prompt, strategy);
+      // Parse prompt and extract constraints (using sanitized input)
+      const { constraint, cleanPrompt } = parsePromptWithConstraints(sanitizedPrompt, strategy);
 
       // Project to provider-specific config
       const config: ProjectedConfig = provider.project(constraint, model);
@@ -252,8 +258,8 @@ export async function sendCommand(
       return;
     }
 
-    // Non-streaming: use shared processSend
-    const response = await processSend(prompt, {
+    // Non-streaming: use shared processSend (input is sanitized within processSend)
+    const response = await processSend(sanitizedPrompt, {
       provider: providerName,
       model: modelOption,
       strategy: strategyName,

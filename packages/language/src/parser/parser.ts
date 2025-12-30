@@ -15,7 +15,60 @@ export interface ParseResult {
   readonly prompt: string;
   /** Original input text */
   readonly source: string;
+  /** Unknown constraint names that were found at start but not recognized */
+  readonly unknownConstraints?: readonly string[];
 }
+
+/**
+ * Known constraints from the Operational strategy.
+ * Includes both primary names and aliases.
+ */
+const OPERATIONAL_KNOWN = new Set([
+  'precise', 'deterministic', 'grounded',
+  'creative', 'exploratory',
+  'terse', 'brief', 'concise',
+  'verbose', 'detailed', 'thorough',
+  'formal',
+  'casual',
+  'analytical', 'step-by-step', 'reasoning',
+  'strict', 'compliant',
+  'flexible',
+  'nomemory', 'isolated',
+  'lastn',
+]);
+
+/**
+ * Known constraints from the CTN strategy.
+ * Includes both primary names and aliases.
+ */
+const CTN_KNOWN = new Set([
+  'clarity',
+  'smooth',
+  'focused',
+  'structural',
+  'grounded',
+  'exploratory',
+  'schema',
+  'stable',
+  'toolselect',
+  'research',
+  'nomemory', 'isolated',
+  'lastn',
+]);
+
+/**
+ * Combined set of all known constraints (case-insensitive lookup).
+ * Used for validating constraints when no explicit allowlist is provided.
+ */
+export const KNOWN_CONSTRAINTS = new Set([
+  ...OPERATIONAL_KNOWN,
+  ...CTN_KNOWN,
+]);
+
+/**
+ * Warning callback for unknown constraints.
+ */
+export type UnknownConstraintWarning = (name: string) => void;
 
 /**
  * Options for the constraint parser.
@@ -40,6 +93,28 @@ export interface ParserOptions {
    * constraints will be parsed; others will be left as text.
    */
   readonly allowedConstraints?: readonly string[];
+
+  /**
+   * If true (default), only parse constraints at the START of input.
+   * Constraints in the middle of text are left as literal text.
+   * If false, parse constraints anywhere in the input (legacy behavior).
+   * Default: true
+   */
+  readonly startOnly?: boolean;
+
+  /**
+   * If true (default), use built-in KNOWN_CONSTRAINTS allowlist
+   * when no explicit allowedConstraints is provided.
+   * Unknown constraints at start are left as literal text with a warning.
+   * Default: true
+   */
+  readonly useBuiltinAllowlist?: boolean;
+
+  /**
+   * Callback for unknown constraint warnings.
+   * Default: console.warn
+   */
+  readonly onUnknownConstraint?: UnknownConstraintWarning;
 }
 
 /**
@@ -51,6 +126,13 @@ export interface ParserOptions {
 const CONSTRAINT_PATTERN = /@(\w+)(?:\[([^\]]*)\])?/g;
 
 /**
+ * Default warning callback that logs to console.
+ */
+const defaultWarning: UnknownConstraintWarning = (name: string) => {
+  console.warn(`Unknown constraint '@${name}', treating as literal text`);
+};
+
+/**
  * Parses constraint syntax from input text.
  *
  * Syntax:
@@ -58,6 +140,9 @@ const CONSTRAINT_PATTERN = /@(\w+)(?:\[([^\]]*)\])?/g;
  * - @name[param=value]       With parameter
  * - @name[a=1,b=2]           Multiple parameters
  * - @a @b @c Text            Multiple constraints + prompt
+ *
+ * By default, only parses constraints at the START of input.
+ * Unknown constraints are left as literal text with a warning.
  *
  * @param input - Input text potentially containing constraints
  * @param options - Parser options
@@ -68,6 +153,9 @@ export function parse(input: string, options: ParserOptions = {}): ParseResult {
     parseConstraints = true,
     constraintBoundary,
     allowedConstraints,
+    startOnly = true,
+    useBuiltinAllowlist = true,
+    onUnknownConstraint = defaultWarning,
   } = options;
 
   // If parsing disabled, return input as-is
@@ -84,7 +172,16 @@ export function parse(input: string, options: ParserOptions = {}): ParseResult {
     return parseWithBoundary(input, constraintBoundary, allowedConstraints);
   }
 
-  // Parse constraints from entire input
+  // New default: start-only parsing with built-in allowlist
+  if (startOnly) {
+    return parseConstraintsFromStart(input, {
+      allowedConstraints,
+      useBuiltinAllowlist,
+      onUnknownConstraint,
+    });
+  }
+
+  // Legacy behavior: parse constraints anywhere in text
   return parseConstraintsFromText(input, allowedConstraints);
 }
 
@@ -195,6 +292,122 @@ function parseConstraintsFromText(
     prompt,
     source: input,
   };
+}
+
+/**
+ * Regex pattern for constraint at start of string.
+ * Matches: @name or @name[params]
+ * Must be at start or after whitespace from previous constraint.
+ */
+const START_CONSTRAINT_PATTERN = /^@(\w+)(?:\[([^\]]*)\])?/;
+
+/**
+ * Options for start-only parsing.
+ */
+interface StartParseOptions {
+  allowedConstraints: readonly string[] | undefined;
+  useBuiltinAllowlist: boolean;
+  onUnknownConstraint: UnknownConstraintWarning;
+}
+
+/**
+ * Parses constraints only from the START of input.
+ * Stops at the first non-constraint text or unknown constraint.
+ * Unknown constraints at start are treated as literal text with a warning.
+ */
+function parseConstraintsFromStart(
+  input: string,
+  options: StartParseOptions
+): ParseResult {
+  const { allowedConstraints, useBuiltinAllowlist, onUnknownConstraint } = options;
+  const constraints: ParsedConstraint[] = [];
+  const unknownConstraints: string[] = [];
+
+  // Build effective allowlist
+  const allowedSet = allowedConstraints
+    ? new Set(allowedConstraints.map((c) => c.replace(/^@/, '').toLowerCase()))
+    : useBuiltinAllowlist
+      ? KNOWN_CONSTRAINTS
+      : null;
+
+  let remaining = input;
+  let foundUnknown = false;
+
+  // Keep parsing while we find constraints at the start
+  while (remaining.length > 0 && !foundUnknown) {
+    // Skip leading whitespace
+    const trimmed = remaining.trimStart();
+    if (trimmed.length === 0) {
+      remaining = '';
+      break;
+    }
+
+    // Check if starts with @ for potential constraint
+    if (!trimmed.startsWith('@')) {
+      // Not a constraint, done parsing
+      remaining = trimmed;
+      break;
+    }
+
+    // Check for malformed @@ pattern
+    if (trimmed.startsWith('@@')) {
+      // Malformed - treat as literal text
+      remaining = trimmed;
+      break;
+    }
+
+    // Try to match constraint pattern
+    const match = START_CONSTRAINT_PATTERN.exec(trimmed);
+    if (!match) {
+      // No valid constraint syntax (e.g., just '@' alone)
+      remaining = trimmed;
+      break;
+    }
+
+    const name = match[1]!;
+    const nameLower = name.toLowerCase();
+    const paramsStr = match[2];
+    const fullMatch = match[0];
+
+    // Check if constraint is known/allowed
+    if (allowedSet && !allowedSet.has(nameLower)) {
+      // Unknown constraint - treat as literal text, emit warning
+      onUnknownConstraint(name);
+      unknownConstraints.push(name);
+      foundUnknown = true;
+      remaining = trimmed;
+      break;
+    }
+
+    // Parse parameters (may throw MalformedConstraintError)
+    const params = paramsStr ? parseParams(paramsStr, name, input) : {};
+
+    // Valid constraint found
+    constraints.push({
+      name,
+      params,
+      source: fullMatch,
+    });
+
+    // Move past this constraint
+    remaining = trimmed.slice(fullMatch.length);
+  }
+
+  // Clean up remaining text
+  const prompt = remaining.trim();
+
+  const result: ParseResult = {
+    constraints,
+    prompt,
+    source: input,
+  };
+
+  // Only add unknownConstraints if there are any
+  if (unknownConstraints.length > 0) {
+    return { ...result, unknownConstraints };
+  }
+
+  return result;
 }
 
 /**

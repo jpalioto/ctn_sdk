@@ -124,6 +124,7 @@ describe('serve command', () => {
       assert.strictEqual(response.statusCode, 400);
       const body = JSON.parse(response.body);
       assert.strictEqual(body.error, 'Missing required field: input');
+      assert.strictEqual(body.code, 'VALIDATION_ERROR');
     });
 
     it('returns 400 if input is empty string', async () => {
@@ -136,7 +137,8 @@ describe('serve command', () => {
 
       assert.strictEqual(response.statusCode, 400);
       const body = JSON.parse(response.body);
-      assert.strictEqual(body.error, 'Missing required field: input');
+      assert.strictEqual(body.error, 'Input is empty');
+      assert.strictEqual(body.code, 'VALIDATION_ERROR');
     });
 
     it('returns 400 if input is whitespace only', async () => {
@@ -149,7 +151,8 @@ describe('serve command', () => {
 
       assert.strictEqual(response.statusCode, 400);
       const body = JSON.parse(response.body);
-      assert.strictEqual(body.error, 'Missing required field: input');
+      assert.strictEqual(body.error, 'Input is empty');
+      assert.strictEqual(body.code, 'VALIDATION_ERROR');
     });
 
     it('returns 400 if body is not valid JSON object', async () => {
@@ -266,13 +269,16 @@ describe('serve command', () => {
         assert.ok(response.statusCode >= 400);
         const body = JSON.parse(response.body);
         assert.ok(body.error);
-        // Error message contains either "api key" or "API key" (case varies by provider)
+        // Error message should indicate auth issue (sanitized)
         assert.ok(
           body.error.toLowerCase().includes('api key') ||
           body.error.toLowerCase().includes('apikey') ||
-          body.error.toLowerCase().includes('api_key'),
+          body.error.toLowerCase().includes('api_key') ||
+          body.error.toLowerCase().includes('authentication'),
           `Expected error about API key, got: ${body.error}`
         );
+        // Error code should be AUTH_ERROR
+        assert.strictEqual(body.code, 'AUTH_ERROR');
       } finally {
         // Restore the API key
         if (savedKey) {

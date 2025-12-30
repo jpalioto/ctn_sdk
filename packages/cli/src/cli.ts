@@ -30,6 +30,8 @@ program
   .option('--port <port>', 'Port to listen on', '14380')
   .option('--concurrency <n>', 'Max concurrent requests per provider', '5')
   .option('--retries <n>', 'Max retry attempts for transient failures', '3')
+  .option('--log-level <level>', 'Log level (error, warn, info, debug)', 'info')
+  .option('--redact-prompts', 'Redact prompt content in logs', false)
   .action(serveAction);
 
 program.parse();

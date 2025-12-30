@@ -12,3 +12,6 @@ export * from './renderer/index.js';
 
 // Re-export grounding module
 export * from './grounding/index.js';
+
+// Re-export sanitize module
+export * from './sanitize.js';
