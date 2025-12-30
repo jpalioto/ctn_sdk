@@ -5,7 +5,6 @@ import type {
   TraitStrategy,
   ConstraintParams,
   LabeledTraits,
-  ConstraintDefinition,
   Features,
   TraitInteraction,
   StrategyThresholds,
@@ -21,8 +20,14 @@ import {
   CTN_DIMENSION_COUNT,
   CTN_DIMENSION_ID_TO_INDEX,
 } from './dimensions.js';
-import { CTN_CONSTRAINTS, buildConstraintMap } from './constraints.js';
 import { CTN_INTERACTIONS } from './interactions.js';
+import {
+  CTN_TRAIT_MAPPINGS,
+  CTN_STATIC_FEATURES,
+  CTN_PARAMETERIZED,
+  type TraitMap,
+} from './traits.js';
+import { getConstraintByName } from '../../vocabulary/index.js';
 
 /**
  * Configuration options for CTNStrategy.
@@ -51,11 +56,9 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
   readonly interactions: readonly TraitInteraction[] = CTN_INTERACTIONS;
   readonly thresholds: StrategyThresholds;
 
-  private readonly constraintMap: Map<string, ConstraintDefinition>;
   private readonly identityVector: TraitVector;
 
   constructor(config?: CTNStrategyConfig) {
-    this.constraintMap = buildConstraintMap(CTN_CONSTRAINTS);
     this.identityVector = Object.freeze(new Array(CTN_DIMENSION_COUNT).fill(0));
     this.thresholds = Object.freeze({
       kernel: config?.thresholds?.kernel ?? DEFAULT_THRESHOLDS.kernel,
@@ -90,20 +93,26 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
 
   /**
    * Resolves a constraint name and parameters to a trait vector.
+   *
+   * Uses vocabulary for alias resolution, then applies internal trait mappings.
    */
   resolve(name: string, params: ConstraintParams): TraitVector {
-    const definition = this.constraintMap.get(name);
+    // Resolve alias to primary name via vocabulary
+    const primaryName = this.resolvePrimaryName(name);
 
-    if (!definition) {
+    // Look up trait mapping
+    const traitMap = CTN_TRAIT_MAPPINGS[primaryName];
+    if (traitMap === undefined) {
       throw new UnknownConstraintError(name, `@${name}`);
     }
 
     // Handle parameterized constraints
-    if (definition.params && definition.params.length > 0) {
-      return this.resolveParameterized(definition, params);
+    const paramDefs = CTN_PARAMETERIZED[primaryName];
+    if (paramDefs && paramDefs.length > 0) {
+      return this.resolveParameterized(primaryName, paramDefs, params, traitMap);
     }
 
-    return this.traitsToVector(definition.traits);
+    return this.traitsToVector(traitMap);
   }
 
   /**
@@ -113,22 +122,26 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
     name: string,
     params: ConstraintParams
   ): { traits: TraitVector; features: Features } {
-    const definition = this.constraintMap.get(name);
+    // Resolve alias to primary name via vocabulary
+    const primaryName = this.resolvePrimaryName(name);
 
-    if (!definition) {
+    // Look up trait mapping
+    const traitMap = CTN_TRAIT_MAPPINGS[primaryName];
+    if (traitMap === undefined) {
       throw new UnknownConstraintError(name, `@${name}`);
     }
 
     // Handle parameterized constraints
-    if (definition.params && definition.params.length > 0) {
-      const traits = this.resolveParameterized(definition, params);
-      const features = this.resolveParameterizedFeatures(definition, params);
+    const paramDefs = CTN_PARAMETERIZED[primaryName];
+    if (paramDefs && paramDefs.length > 0) {
+      const traits = this.resolveParameterized(primaryName, paramDefs, params, traitMap);
+      const features = this.resolveParameterizedFeatures(primaryName, params);
       return { traits, features };
     }
 
     return {
-      traits: this.traitsToVector(definition.traits),
-      features: definition.features ?? {},
+      traits: this.traitsToVector(traitMap),
+      features: CTN_STATIC_FEATURES[primaryName] ?? {},
     };
   }
 
@@ -247,51 +260,53 @@ SELF_ERASE:
    * Resolves a parameterized constraint.
    */
   private resolveParameterized(
-    definition: ConstraintDefinition,
-    params: ConstraintParams
+    constraintName: string,
+    paramDefs: readonly { name: string; type: 'string' | 'number' | 'boolean'; required: boolean }[],
+    params: ConstraintParams,
+    traitMap: TraitMap
   ): TraitVector {
     // Validate required parameters
-    for (const paramDef of definition.params ?? []) {
+    for (const paramDef of paramDefs) {
       if (paramDef.required && !(paramDef.name in params)) {
         throw new InvalidConstraintParamError(
-          definition.name,
+          constraintName,
           paramDef.name,
           'required parameter missing',
-          `@${definition.name}`
+          `@${constraintName}`
         );
       }
 
       const value = params[paramDef.name];
       if (value !== undefined) {
-        this.validateParamType(definition.name, paramDef.name, value, paramDef.type);
+        this.validateParamType(constraintName, paramDef.name, value, paramDef.type);
       }
     }
 
-    return this.traitsToVector(definition.traits);
+    return this.traitsToVector(traitMap);
   }
 
   /**
    * Resolves features for a parameterized constraint.
    */
   private resolveParameterizedFeatures(
-    definition: ConstraintDefinition,
+    constraintName: string,
     params: ConstraintParams
   ): Features {
     // Special handling for lastN
-    if (definition.name === 'lastN') {
+    if (constraintName === 'lastN') {
       const n = params['n'];
       if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) {
         throw new InvalidConstraintParamError(
-          definition.name,
+          constraintName,
           'n',
           'must be a positive integer',
-          `@${definition.name}`
+          `@${constraintName}`
         );
       }
       return { context: { type: 'last', n } };
     }
 
-    return definition.features ?? {};
+    return CTN_STATIC_FEATURES[constraintName] ?? {};
   }
 
   /**
@@ -331,5 +346,14 @@ SELF_ERASE:
     }
 
     return vector;
+  }
+
+  /**
+   * Resolves a constraint name (or alias) to its primary name via vocabulary.
+   * Returns the input if not found in vocabulary (handled by caller).
+   */
+  private resolvePrimaryName(nameOrAlias: string): string {
+    const constraint = getConstraintByName(nameOrAlias);
+    return constraint?.name ?? nameOrAlias;
   }
 }

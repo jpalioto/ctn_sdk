@@ -6,9 +6,13 @@ export {
   OPERATIONAL_DIMENSION_COUNT,
   DIMENSION_ID_TO_INDEX,
   DIMENSION_INDEX_TO_ID,
-  // Constraint definitions
-  OPERATIONAL_CONSTRAINTS,
-  buildConstraintMap,
+  // Trait mappings (internal - constraint names come from vocabulary)
+  OPERATIONAL_TRAIT_MAPPINGS,
+  OPERATIONAL_STATIC_FEATURES,
+  OPERATIONAL_PARAMETERIZED,
+  OPERATIONAL_SUPPORTED_CONSTRAINTS,
+  isOperationalConstraint,
+  type TraitMap,
   // Interaction definitions
   OPERATIONAL_INTERACTIONS,
   buildInteractionMap,

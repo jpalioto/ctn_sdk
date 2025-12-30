@@ -5,7 +5,6 @@ import type {
   TraitStrategy,
   ConstraintParams,
   LabeledTraits,
-  ConstraintDefinition,
   Features,
   TraitInteraction,
   StrategyThresholds,
@@ -21,8 +20,14 @@ import {
   OPERATIONAL_DIMENSION_COUNT,
   DIMENSION_ID_TO_INDEX,
 } from './dimensions.js';
-import { OPERATIONAL_CONSTRAINTS, buildConstraintMap } from './constraints.js';
 import { OPERATIONAL_INTERACTIONS } from './interactions.js';
+import {
+  OPERATIONAL_TRAIT_MAPPINGS,
+  OPERATIONAL_STATIC_FEATURES,
+  OPERATIONAL_PARAMETERIZED,
+  type TraitMap,
+} from './traits.js';
+import { getConstraintByName } from '../../vocabulary/index.js';
 
 /**
  * Configuration options for OperationalStrategy.
@@ -51,11 +56,9 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
   readonly interactions: readonly TraitInteraction[] = OPERATIONAL_INTERACTIONS;
   readonly thresholds: StrategyThresholds;
 
-  private readonly constraintMap: Map<string, ConstraintDefinition>;
   private readonly identityVector: TraitVector;
 
   constructor(config?: OperationalStrategyConfig) {
-    this.constraintMap = buildConstraintMap(OPERATIONAL_CONSTRAINTS);
     this.identityVector = Object.freeze(new Array(OPERATIONAL_DIMENSION_COUNT).fill(0));
     this.thresholds = Object.freeze({
       kernel: config?.thresholds?.kernel ?? DEFAULT_THRESHOLDS.kernel,
@@ -93,23 +96,29 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
   /**
    * Resolves a constraint name and parameters to a trait vector and features.
    *
+   * Uses vocabulary for alias resolution, then applies internal trait mappings.
+   *
    * @throws UnknownConstraintError if the constraint name is not recognized
    * @throws InvalidConstraintParamError if parameters are invalid
    */
   resolve(name: string, params: ConstraintParams): TraitVector {
-    const definition = this.constraintMap.get(name);
+    // Resolve alias to primary name via vocabulary
+    const primaryName = this.resolvePrimaryName(name);
 
-    if (!definition) {
+    // Look up trait mapping
+    const traitMap = OPERATIONAL_TRAIT_MAPPINGS[primaryName];
+    if (traitMap === undefined) {
       throw new UnknownConstraintError(name, `@${name}`);
     }
 
     // Handle parameterized constraints
-    if (definition.params && definition.params.length > 0) {
-      return this.resolveParameterized(definition, params);
+    const paramDefs = OPERATIONAL_PARAMETERIZED[primaryName];
+    if (paramDefs && paramDefs.length > 0) {
+      return this.resolveParameterized(primaryName, paramDefs, params, traitMap);
     }
 
     // Convert trait map to vector
-    return this.traitsToVector(definition.traits);
+    return this.traitsToVector(traitMap);
   }
 
   /**
@@ -119,22 +128,26 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
     name: string,
     params: ConstraintParams
   ): { traits: TraitVector; features: Features } {
-    const definition = this.constraintMap.get(name);
+    // Resolve alias to primary name via vocabulary
+    const primaryName = this.resolvePrimaryName(name);
 
-    if (!definition) {
+    // Look up trait mapping
+    const traitMap = OPERATIONAL_TRAIT_MAPPINGS[primaryName];
+    if (traitMap === undefined) {
       throw new UnknownConstraintError(name, `@${name}`);
     }
 
     // Handle parameterized constraints
-    if (definition.params && definition.params.length > 0) {
-      const traits = this.resolveParameterized(definition, params);
-      const features = this.resolveParameterizedFeatures(definition, params);
+    const paramDefs = OPERATIONAL_PARAMETERIZED[primaryName];
+    if (paramDefs && paramDefs.length > 0) {
+      const traits = this.resolveParameterized(primaryName, paramDefs, params, traitMap);
+      const features = this.resolveParameterizedFeatures(primaryName, params);
       return { traits, features };
     }
 
     return {
-      traits: this.traitsToVector(definition.traits),
-      features: definition.features ?? {},
+      traits: this.traitsToVector(traitMap),
+      features: OPERATIONAL_STATIC_FEATURES[primaryName] ?? {},
     };
   }
 
@@ -168,17 +181,12 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
   }
 
   /**
-   * Gets the constraint definition for a name (including aliases).
-   */
-  getConstraintDefinition(name: string): ConstraintDefinition | undefined {
-    return this.constraintMap.get(name);
-  }
-
-  /**
-   * Checks if a constraint name is known.
+   * Checks if a constraint name is known by this strategy.
+   * Uses vocabulary for alias resolution.
    */
   hasConstraint(name: string): boolean {
-    return this.constraintMap.has(name);
+    const primaryName = this.resolvePrimaryName(name);
+    return OPERATIONAL_TRAIT_MAPPINGS[primaryName] !== undefined;
   }
 
   // ===========================================================================
@@ -283,52 +291,54 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
    * Resolves a parameterized constraint.
    */
   private resolveParameterized(
-    definition: ConstraintDefinition,
-    params: ConstraintParams
+    constraintName: string,
+    paramDefs: readonly { name: string; type: 'string' | 'number' | 'boolean'; required: boolean }[],
+    params: ConstraintParams,
+    traitMap: TraitMap
   ): TraitVector {
     // Validate required parameters
-    for (const paramDef of definition.params ?? []) {
+    for (const paramDef of paramDefs) {
       if (paramDef.required && !(paramDef.name in params)) {
         throw new InvalidConstraintParamError(
-          definition.name,
+          constraintName,
           paramDef.name,
           'required parameter missing',
-          `@${definition.name}`
+          `@${constraintName}`
         );
       }
 
       const value = params[paramDef.name];
       if (value !== undefined) {
-        this.validateParamType(definition.name, paramDef.name, value, paramDef.type);
+        this.validateParamType(constraintName, paramDef.name, value, paramDef.type);
       }
     }
 
-    // For lastN, traits are empty (it only affects features)
-    return this.traitsToVector(definition.traits);
+    // Convert trait map to vector
+    return this.traitsToVector(traitMap);
   }
 
   /**
    * Resolves features for a parameterized constraint.
    */
   private resolveParameterizedFeatures(
-    definition: ConstraintDefinition,
+    constraintName: string,
     params: ConstraintParams
   ): Features {
     // Special handling for lastN
-    if (definition.name === 'lastN') {
+    if (constraintName === 'lastN') {
       const n = params['n'];
       if (typeof n !== 'number' || !Number.isInteger(n) || n < 1) {
         throw new InvalidConstraintParamError(
-          definition.name,
+          constraintName,
           'n',
           'must be a positive integer',
-          `@${definition.name}`
+          `@${constraintName}`
         );
       }
       return { context: { type: 'last', n } };
     }
 
-    return definition.features ?? {};
+    return OPERATIONAL_STATIC_FEATURES[constraintName] ?? {};
   }
 
   /**
@@ -349,6 +359,15 @@ export class OperationalStrategy implements TraitStrategy, XmlCapable, MarkdownC
         `@${constraintName}`
       );
     }
+  }
+
+  /**
+   * Resolves a constraint name (or alias) to its primary name via vocabulary.
+   * Returns the input if not found in vocabulary (handled by caller).
+   */
+  private resolvePrimaryName(nameOrAlias: string): string {
+    const constraint = getConstraintByName(nameOrAlias);
+    return constraint?.name ?? nameOrAlias;
   }
 }
 

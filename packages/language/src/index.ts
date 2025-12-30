@@ -1,6 +1,9 @@
 // Re-export all schemas and types
 export * from './schemas/index.js';
 
+// Re-export vocabulary module (universal constraint definitions)
+export * from './vocabulary/index.js';
+
 // Re-export strategy module
 export * from './strategy/index.js';
 

@@ -4,6 +4,7 @@ import type {
   ConstraintParamValue,
 } from '../schemas/index.js';
 import { MalformedConstraintError } from '../schemas/index.js';
+import { KNOWN_CONSTRAINT_NAMES } from '../vocabulary/index.js';
 
 /**
  * Security-critical character sanitization for constraint parsing.
@@ -45,50 +46,10 @@ export interface ParseResult {
 }
 
 /**
- * Known constraints from the Operational strategy.
- * Includes both primary names and aliases.
+ * Re-export KNOWN_CONSTRAINT_NAMES as KNOWN_CONSTRAINTS for backward compatibility.
+ * This is the single source of truth from the vocabulary module.
  */
-const OPERATIONAL_KNOWN = new Set([
-  'precise', 'deterministic', 'grounded',
-  'creative', 'exploratory',
-  'terse', 'brief', 'concise',
-  'verbose', 'detailed', 'thorough',
-  'formal',
-  'casual',
-  'analytical', 'step-by-step', 'reasoning',
-  'strict', 'compliant',
-  'flexible',
-  'nomemory', 'isolated',
-  'lastn',
-]);
-
-/**
- * Known constraints from the CTN strategy.
- * Includes both primary names and aliases.
- */
-const CTN_KNOWN = new Set([
-  'clarity',
-  'smooth',
-  'focused',
-  'structural',
-  'grounded',
-  'exploratory',
-  'schema',
-  'stable',
-  'toolselect',
-  'research',
-  'nomemory', 'isolated',
-  'lastn',
-]);
-
-/**
- * Combined set of all known constraints (case-insensitive lookup).
- * Used for validating constraints when no explicit allowlist is provided.
- */
-export const KNOWN_CONSTRAINTS = new Set([
-  ...OPERATIONAL_KNOWN,
-  ...CTN_KNOWN,
-]);
+export const KNOWN_CONSTRAINTS = KNOWN_CONSTRAINT_NAMES;
 
 /**
  * Warning callback for unknown constraints.

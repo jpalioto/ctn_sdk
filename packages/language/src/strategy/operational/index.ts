@@ -6,11 +6,15 @@ export {
   DIMENSION_INDEX_TO_ID,
 } from './dimensions.js';
 
-// Constraint definitions
+// Internal trait mappings (strategy implementation detail)
 export {
-  OPERATIONAL_CONSTRAINTS,
-  buildConstraintMap,
-} from './constraints.js';
+  OPERATIONAL_TRAIT_MAPPINGS,
+  OPERATIONAL_STATIC_FEATURES,
+  OPERATIONAL_PARAMETERIZED,
+  OPERATIONAL_SUPPORTED_CONSTRAINTS,
+  isOperationalConstraint,
+  type TraitMap,
+} from './traits.js';
 
 // Interaction definitions
 export {
