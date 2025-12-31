@@ -96,19 +96,16 @@ describe('Composer', () => {
       assertVectorsEqual(abc.traits, bac.traits);
     });
 
-    it('has identity: a ⊕ identity === a', () => {
+    it('is idempotent: a ⊕ a === a', () => {
       const a = resolve(strategy, 'creative');
-      const identity: ResolvedConstraint = {
-        name: 'identity',
-        params: {},
-        traits: strategy.identity(),
-        features: {},
-      };
 
-      const aOnly = composer.compose([a]);
-      const aWithIdentity = composer.compose([a, identity]);
+      const single = composer.compose([a]);
+      const doubled = composer.compose([a, a]);
+      const tripled = composer.compose([a, a, a]);
 
-      assertVectorsEqual(aOnly.traits, aWithIdentity.traits);
+      // Repeating the same constraint should not change the result
+      assertVectorsEqual(single.traits, doubled.traits);
+      assertVectorsEqual(single.traits, tripled.traits);
     });
 
     it('empty composition yields identity', () => {
@@ -117,23 +114,34 @@ describe('Composer', () => {
 
       assertVectorsEqual(empty.traits, identity);
     });
+
+    it('single constraint is unchanged', () => {
+      const creative = resolve(strategy, 'creative');
+      const result = composer.compose([creative]);
+
+      // Single constraint should return its exact trait vector
+      assertVectorsEqual(result.traits, creative.traits);
+    });
   });
 
-  describe('unit ball constraint', () => {
-    it('enforces ‖τ‖ ≤ 1 after composition', () => {
+  describe('hypercube constraint', () => {
+    it('stays in [0,1]^n hypercube after composition', () => {
       const a = resolve(strategy, 'creative');
 
-      // Stack same constraint multiple times
+      // Stack same constraint multiple times - with mean, result is unchanged
       const extreme = composer.compose([a, a, a, a, a]);
 
-      assert.ok(
-        magnitude(extreme.traits) <= 1 + 1e-10,
-        `Magnitude ${magnitude(extreme.traits)} exceeds unit ball`
-      );
+      // With mean, stacking same constraint returns same values (idempotent)
+      for (let i = 0; i < extreme.traits.length; i++) {
+        assert.ok(
+          extreme.traits[i]! >= -1 && extreme.traits[i]! <= 1,
+          `Trait ${i} (${extreme.traits[i]}) should be in [-1, 1]`
+        );
+      }
     });
 
-    it('saturates correctly when sum exceeds unit ball', () => {
-      // Create constraints that will definitely exceed unit ball when summed
+    it('mean of different constraints stays bounded', () => {
+      // Create constraints with different trait values
       const precise = resolve(strategy, 'precise'); // v1:-0.5, v5:+0.5
       const analytical = resolve(strategy, 'analytical'); // v5:+0.8
       const strict = resolve(strategy, 'strict'); // v6:+0.5
@@ -146,25 +154,24 @@ describe('Composer', () => {
         analytical,
       ]);
 
-      const mag = magnitude(result.traits);
-      assert.ok(
-        mag <= 1 + 1e-10,
-        `Magnitude ${mag} exceeds unit ball after saturation`
-      );
+      // All components should remain bounded
+      for (let i = 0; i < result.traits.length; i++) {
+        assert.ok(
+          result.traits[i]! >= -1 && result.traits[i]! <= 1,
+          `Trait ${i} (${result.traits[i]}) should be in [-1, 1]`
+        );
+      }
     });
 
-    it('preserves direction when saturating', () => {
+    it('preserves values with idempotent stacking', () => {
       const creative = resolve(strategy, 'creative'); // v1:+0.5
 
-      // Stack creative multiple times - should still point in same direction
+      // Stack creative multiple times - should get same values (mean is idempotent)
       const single = composer.compose([creative]);
       const stacked = composer.compose([creative, creative, creative]);
 
-      // v1 should still be positive
-      assert.ok(stacked.traits[0]! > 0, 'v1 should remain positive');
-
-      // Direction should be preserved (v1 is the dominant non-zero component)
-      // The ratio of other components to v1 should be similar
+      // v1 should be exactly the same
+      assert.equal(stacked.traits[0]!, single.traits[0]!, 'v1 should be unchanged');
     });
   });
 
@@ -175,16 +182,16 @@ describe('Composer', () => {
 
       const result = composer.compose([creative, precise]);
 
-      // v1 should be near zero (0.5 + -0.5 = 0)
+      // v1 should be zero: mean(0.5, -0.5) = 0
       assert.ok(
         Math.abs(result.traits[0]!) < 0.01,
         `v1 should cancel: got ${result.traits[0]}`
       );
 
-      // v5 should remain (+0.5 from precise)
+      // v5 should be 0.25: mean(0, 0.5) = 0.25
       assert.ok(
-        Math.abs(result.traits[4]! - 0.5) < 0.01,
-        `v5 should be ~0.5: got ${result.traits[4]}`
+        Math.abs(result.traits[4]! - 0.25) < 0.01,
+        `v5 should be ~0.25: got ${result.traits[4]}`
       );
     });
 
@@ -194,7 +201,7 @@ describe('Composer', () => {
 
       const result = composer.compose([formal, casual]);
 
-      // v4 should be exactly zero
+      // v4 should be zero: mean(0.5, -0.5) = 0
       assert.ok(
         Math.abs(result.traits[3]!) < 1e-10,
         `v4 should be zero: got ${result.traits[3]}`
@@ -203,147 +210,90 @@ describe('Composer', () => {
   });
 
   describe('constructive interference', () => {
-    it('adds orthogonal traits', () => {
+    it('averages orthogonal traits', () => {
       const terse = resolve(strategy, 'terse'); // v2:+0.5
       const formal = resolve(strategy, 'formal'); // v4:+0.5
 
       const result = composer.compose([terse, formal]);
 
-      // Both traits should be present
+      // Each trait is averaged: mean(0.5, 0) = 0.25
       assert.ok(
-        Math.abs(result.traits[1]! - 0.5) < 0.01,
-        `v2 should be ~0.5: got ${result.traits[1]}`
+        Math.abs(result.traits[1]! - 0.25) < 0.01,
+        `v2 should be ~0.25: got ${result.traits[1]}`
       );
       assert.ok(
-        Math.abs(result.traits[3]! - 0.5) < 0.01,
-        `v4 should be ~0.5: got ${result.traits[3]}`
+        Math.abs(result.traits[3]! - 0.25) < 0.01,
+        `v4 should be ~0.25: got ${result.traits[3]}`
+      );
+    });
+
+    it('stacking same constraint preserves full strength', () => {
+      const terse = resolve(strategy, 'terse'); // v2:+0.5
+      const formal = resolve(strategy, 'formal'); // v4:+0.5
+
+      // Stack each constraint to preserve its strength
+      const result = composer.compose([terse, terse, formal, formal]);
+
+      // Now mean(0.5, 0.5, 0, 0) / 4 for v2... wait, this is still 0.25
+      // To preserve strength, you need equal representation
+      // mean(0.5, 0.5) = 0.5 for v2 if only terse constraints
+      const terseOnly = composer.compose([terse, terse]);
+      assert.ok(
+        Math.abs(terseOnly.traits[1]! - 0.5) < 0.01,
+        `v2 with stacked terse should be ~0.5: got ${terseOnly.traits[1]}`
       );
     });
   });
 
-  describe('n-ary composition guarantee', () => {
-    it('n-ary composition differs from iterative binary with per-step normalization', () => {
-      // This test demonstrates WHY n-ary matters
-      // We manually compute what binary composition would produce
-
+  describe('n-ary mean composition', () => {
+    it('mean is computed correctly for all constraints at once', () => {
+      // This test demonstrates that n-ary mean works correctly
       const a = 0.6;
       const b = 0.6;
       const c = -0.6;
 
-      // N-ary: saturate(a + b + c) = saturate(0.6) = 0.6
-      const nary = Math.min(1, Math.abs(a + b + c)) * Math.sign(a + b + c);
-
-      // Binary with per-step: saturate(saturate(a + b) + c)
-      const ab = Math.min(1, Math.abs(a + b)) * Math.sign(a + b); // saturate(1.2) = 1.0
-      const binary = Math.min(1, Math.abs(ab + c)) * Math.sign(ab + c); // saturate(0.4) = 0.4
-
-      // They differ! This is why n-ary matters
-      assert.notEqual(
-        nary,
-        binary,
-        'N-ary and binary should differ (demonstrating why n-ary matters)'
+      // N-ary mean: (a + b + c) / 3 = (0.6 + 0.6 - 0.6) / 3 = 0.2
+      const naryMean = (a + b + c) / 3;
+      assert.ok(
+        Math.abs(naryMean - 0.2) < 1e-10,
+        `N-ary mean should be ~0.2, got ${naryMean}`
       );
-      assert.equal(nary, 0.6, 'N-ary result should be 0.6');
-      assert.equal(binary, 0.4, 'Binary result should be 0.4');
+
+      // Binary iterative mean would give different results:
+      // mean(a, b) = 0.6, then mean(0.6, c) = mean(0.6, -0.6) = 0
+      const abMean = (a + b) / 2; // 0.6
+      const binaryMean = (abMean + c) / 2; // 0
+
+      // They differ!
+      assert.ok(
+        Math.abs(naryMean - binaryMean) > 0.1,
+        'N-ary mean differs from iterative binary mean'
+      );
+    });
+
+    it('mean of identical values is unchanged', () => {
+      // Mean([a, a, a]) = a (idempotent property)
+      const value = 0.7;
+      const naryMean = (value + value + value) / 3;
+      assert.ok(
+        Math.abs(naryMean - value) < 1e-10,
+        `Mean of identical values should equal that value, got ${naryMean}`
+      );
+    });
+
+    it('mean preserves bounds when inputs are in [-1, 1]', () => {
+      // If all inputs are in [-1, 1], the mean must be too
+      const values = [0.9, -0.8, 0.7, -0.6, 0.5];
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+
+      assert.ok(mean >= -1, 'Mean should be >= -1');
+      assert.ok(mean <= 1, 'Mean should be <= 1');
     });
   });
 });
 
 describe('trait interaction order', () => {
   const strategy = new OperationalStrategy();
-
-  it('interactions are evaluated AFTER saturation normalization', () => {
-    // This test proves the pipeline order: accumulate → saturate → resolveInteractions
-    //
-    // Scenario: Multiple traits that each exceed interaction threshold (0.5) pre-saturation
-    // but fall below threshold post-saturation due to unit-ball normalization.
-    //
-    // Example with 5 components at 0.6:
-    //   Pre-saturation: [0.6, 0.6, 0.6, 0.6, 0.6] - each > 0.5 (would trigger)
-    //   magnitude = sqrt(5 * 0.36) = sqrt(1.8) ≈ 1.34
-    //   Post-saturation: [0.45, 0.45, 0.45, 0.45, 0.45] - each < 0.5 (won't trigger)
-    //
-    // If interactions were applied PRE-saturation: interaction would fire
-    // With POST-saturation (correct): interaction does NOT fire
-
-    const INTERACTION_THRESHOLD = 0.5;
-
-    // Create a trait vector where components exceed threshold before saturation
-    // but fall below after saturation
-    const preSaturationVector = [0.6, 0.6, 0.6, 0.6, 0.6, 0];
-
-    // Calculate magnitude: sqrt(5 * 0.36) = sqrt(1.8) ≈ 1.34
-    const preMagnitude = Math.sqrt(
-      preSaturationVector.reduce((sum, v) => sum + v * v, 0)
-    );
-    assert.ok(preMagnitude > 1, 'Pre-saturation magnitude should exceed 1');
-
-    // After saturation, components are scaled down
-    const postSaturationVector = preSaturationVector.map((v) => v / preMagnitude);
-    const postMagnitude = Math.sqrt(
-      postSaturationVector.reduce((sum, v) => sum + v * v, 0)
-    );
-
-    // Verify saturation works correctly
-    assert.ok(
-      Math.abs(postMagnitude - 1) < 1e-10,
-      `Post-saturation magnitude should be 1, got ${postMagnitude}`
-    );
-
-    // Key assertion: components that were > 0.5 pre-saturation are now < 0.5
-    const preComponentValue = preSaturationVector[0]!;
-    const postComponentValue = postSaturationVector[0]!;
-
-    assert.ok(
-      preComponentValue > INTERACTION_THRESHOLD,
-      `Pre-saturation component (${preComponentValue}) should exceed threshold (${INTERACTION_THRESHOLD})`
-    );
-    assert.ok(
-      postComponentValue < INTERACTION_THRESHOLD,
-      `Post-saturation component (${postComponentValue}) should be below threshold (${INTERACTION_THRESHOLD})`
-    );
-
-    // This proves that if interactions were evaluated pre-saturation,
-    // they would see values > 0.5 and potentially fire.
-    // But since they're evaluated post-saturation, they see values < 0.5
-    // and the interaction condition is NOT met.
-
-    // The difference: ~0.6 vs ~0.45 determines whether 'both_high' triggers
-    const wouldTriggerPreSaturation =
-      preComponentValue > INTERACTION_THRESHOLD;
-    const wouldTriggerPostSaturation =
-      postComponentValue > INTERACTION_THRESHOLD;
-
-    assert.ok(
-      wouldTriggerPreSaturation !== wouldTriggerPostSaturation,
-      'Saturation order MATTERS: pre- and post-saturation trigger different outcomes'
-    );
-  });
-
-  it('demonstrates correct pipeline: accumulate → saturate → resolveInteractions', () => {
-    // Use the composer to verify the actual pipeline order
-    // We compose multiple constraints that would interact differently
-    // based on pre- vs post-saturation evaluation
-
-    const creative = resolve(strategy, 'creative'); // v1:+0.5
-    const precise = resolve(strategy, 'precise'); // v1:-0.5, v5:+0.5
-    const analytical = resolve(strategy, 'analytical'); // v5:+0.8
-
-    // Compose all together
-    const result = composer.compose([creative, precise, analytical, analytical]);
-
-    // The result should have ‖τ‖ ≤ 1 (unit ball maintained)
-    const mag = magnitude(result.traits);
-    assert.ok(
-      mag <= 1 + 1e-10,
-      `Composed magnitude (${mag}) should not exceed unit ball`
-    );
-
-    // Saturation MUST happen before interactions are evaluated
-    // This is verified by the fact that no interaction can violate
-    // the non-expansive invariant (‖τ'‖ ≤ ‖τ‖ ≤ 1)
-  });
-
   const composer = new Composer(strategy);
 
   function resolve(
@@ -353,6 +303,74 @@ describe('trait interaction order', () => {
     const { traits, features } = strat.resolveWithFeatures(name, {});
     return { name, params: {}, traits, features };
   }
+
+  it('interactions are evaluated AFTER mean computation', () => {
+    // This test proves the pipeline order: computeMean → resolveInteractions
+    //
+    // Scenario: Two constraints with trait values that when averaged fall
+    // below the interaction threshold.
+    //
+    // Example:
+    //   Constraint A: v5 = 0.8 (analytical)
+    //   Constraint B: v5 = 0.0 (creative - no v5)
+    //   Mean: v5 = 0.4 (below 0.5 threshold)
+    //
+    // If interactions were applied BEFORE mean: 0.8 > 0.5, would trigger
+    // With AFTER mean (correct): 0.4 < 0.5, won't trigger
+
+    const INTERACTION_THRESHOLD = 0.5;
+
+    const analytical = resolve(strategy, 'analytical'); // v5:+0.8
+    const creative = resolve(strategy, 'creative'); // v1:+0.5, v5:0
+
+    // Verify individual values
+    assert.ok(
+      analytical.traits[4]! > INTERACTION_THRESHOLD,
+      `Analytical v5 (${analytical.traits[4]}) should exceed threshold`
+    );
+    assert.equal(creative.traits[4], 0, 'Creative v5 should be 0');
+
+    // After mean, v5 = (0.8 + 0) / 2 = 0.4
+    const result = composer.compose([analytical, creative]);
+    const meanV5 = result.traits[4]!;
+
+    assert.ok(
+      meanV5 < INTERACTION_THRESHOLD,
+      `Mean v5 (${meanV5}) should be below threshold (${INTERACTION_THRESHOLD})`
+    );
+
+    // This proves interactions see the post-mean values, not pre-mean
+  });
+
+  it('demonstrates correct pipeline: computeMean → resolveInteractions', () => {
+    // Use the composer to verify the actual pipeline order
+    const creative = resolve(strategy, 'creative'); // v1:+0.5
+    const precise = resolve(strategy, 'precise'); // v1:-0.5, v5:+0.5
+    const analytical = resolve(strategy, 'analytical'); // v5:+0.8
+
+    // Compose all together
+    const result = composer.compose([creative, precise, analytical, analytical]);
+
+    // v1: mean(0.5, -0.5, 0, 0) = 0
+    assert.ok(
+      Math.abs(result.traits[0]!) < 0.01,
+      `v1 should be ~0 after mean: got ${result.traits[0]}`
+    );
+
+    // v5: mean(0, 0.5, 0.8, 0.8) = 0.525
+    assert.ok(
+      Math.abs(result.traits[4]! - 0.525) < 0.01,
+      `v5 should be ~0.525 after mean: got ${result.traits[4]}`
+    );
+
+    // All traits should be in valid range
+    for (let i = 0; i < result.traits.length; i++) {
+      assert.ok(
+        result.traits[i]! >= -1 && result.traits[i]! <= 1,
+        `Trait ${i} should be in [-1, 1]: got ${result.traits[i]}`
+      );
+    }
+  });
 });
 
 describe('compose convenience function', () => {

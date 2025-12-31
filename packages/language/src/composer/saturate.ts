@@ -4,6 +4,10 @@ import { magnitude } from '../schemas/index.js';
 /**
  * Saturating normalization for trait vectors.
  *
+ * **DEPRECATED**: As of v1.1, the Composer uses element-wise mean instead of
+ * sum+saturate. These functions are kept for backward compatibility and may
+ * still be useful for custom composition strategies.
+ *
  * Enforces the unit-ball constraint: ‖τ‖ ≤ 1
  *
  * Formula: saturate(V) = V / max(1, ‖V‖)

@@ -31,7 +31,8 @@
       "Bash(pnpm --filter @ctn/google test:*)",
       "Bash(pnpm docs:*)",
       "Bash(npx typedoc)",
-      "Bash(pnpm --filter @ctn/openai test)"
+      "Bash(pnpm --filter @ctn/openai test)",
+      "Bash(node:*)"
     ]
   }
 }

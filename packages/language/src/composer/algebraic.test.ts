@@ -155,22 +155,17 @@ describe('Algebraic Properties (Property-Based)', () => {
       );
     });
 
-    it('composing with identity yields same result', () => {
+    it('composing same constraint is idempotent', () => {
       fc.assert(
         fc.property(
           resolvedConstraint,
-          (constraint) => {
-            const identityConstraint: ResolvedConstraint = {
-              name: 'identity',
-              params: {},
-              traits: strategy.identity(),
-              features: {},
-            };
+          fc.integer({ min: 2, max: 5 }),
+          (constraint, count) => {
+            // mean([a, a, a, ...]) = a (idempotent)
+            const single = composer.compose([constraint]);
+            const stacked = composer.compose(Array(count).fill(constraint));
 
-            const withoutIdentity = composer.compose([constraint]);
-            const withIdentity = composer.compose([constraint, identityConstraint]);
-
-            return vectorsEqual(withoutIdentity.traits, withIdentity.traits);
+            return vectorsEqual(single.traits, stacked.traits);
           }
         ),
         { numRuns: 100 }

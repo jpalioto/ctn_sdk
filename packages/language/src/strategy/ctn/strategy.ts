@@ -25,8 +25,13 @@ import {
   CTN_TRAIT_MAPPINGS,
   CTN_STATIC_FEATURES,
   CTN_PARAMETERIZED,
+  CTN_PROFILES,
+  getProfile,
+  combineProfiles,
   type TraitMap,
+  type CTNProfile,
 } from './traits.js';
+import { DEFAULT_PROFILE } from './profiles.js';
 import { getConstraintByName } from '../../vocabulary/index.js';
 
 /**
@@ -146,6 +151,27 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
   }
 
   /**
+   * Resolves a constraint to its full CTN profile.
+   */
+  resolveToProfile(name: string): CTNProfile {
+    const primaryName = this.resolvePrimaryName(name);
+    return getProfile(primaryName) ?? DEFAULT_PROFILE;
+  }
+
+  /**
+   * Resolves multiple constraints to a combined profile.
+   * Uses profile combination rules (averaging, union of restrictions).
+   */
+  resolveToProfileCombined(names: readonly string[]): CTNProfile {
+    if (names.length === 0) {
+      return DEFAULT_PROFILE;
+    }
+
+    const profiles = names.map(name => this.resolveToProfile(name));
+    return combineProfiles(profiles);
+  }
+
+  /**
    * Formats a trait vector as labeled key-value pairs.
    */
   formatVector(traits: TraitVector): LabeledTraits {
@@ -189,14 +215,32 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
   /**
    * Renders KernelIR in CTN kernel schema format.
    * Implements CtnCapable.
+   *
+   * @param ir - The kernel intermediate representation
+   * @param profile - Optional CTN profile for enhanced rendering
    */
-  renderCtn(ir: KernelIR): string {
+  renderCtn(ir: KernelIR, profile?: CTNProfile): string {
     // Use composed trait vector if available, otherwise extract from clauses
     const traitVector = ir.traitVector ?? this.extractTraitVector(ir);
     const formattedVector = traitVector.map((v) => v.toFixed(2)).join(', ');
 
-    // Determine mode (default Analysis)
-    const mode = 'Analysis';
+    // Use profile data or infer from trait vector
+    const activeProfile = profile ?? this.inferProfileFromTraits(traitVector);
+
+    // Solver configuration
+    const solverMode = activeProfile.solver.mode;
+    const orthogonalNote = activeProfile.solver.orthogonalInjection
+      ? 'Inject(η_⊥)'
+      : 'η_⊥ = 0';
+    const behaviorLine = activeProfile.solver.behavior
+      ? `\n  Behavior: ${activeProfile.solver.behavior}`
+      : '';
+
+    // Syntax configuration
+    const syntaxLines = this.renderSyntaxConfig(activeProfile);
+
+    // Temperature projection
+    const tempLine = `  Temperature: T = ${activeProfile.temperature.toFixed(2)}`;
 
     return `CTN_KERNEL_SCHEMA(Σ_CTN) ← {
   SYS_KERNEL_INIT(Ψ_global),
@@ -212,6 +256,7 @@ SYS_KERNEL_INIT(Ψ_global) ←
 COGNITIVE_TENSORS(U):
   Trait_Profile τ = [${formattedVector}]
   C_net = Σ ( τᵢ · vᵢ )
+${tempLine}
 
   v₁ = { ε_hid → 0⁺, Atomic_Clarity }
   v₂ = { κ(f) → min, Specification_Accuracy }
@@ -219,21 +264,78 @@ COGNITIVE_TENSORS(U):
   v₄ = { π_gl ≫ π_loc, Structure_Over_Narrative }
   v₅ = { ∂A ≡ A, Framing_Detachment }
   v₆ = { U \\ S, Explore_Kernel_Space }
-  v₇ = { CTN_Form, ∅ }
+  v₇ = { CTN_Form, Schema_Compliance }
 
 STRATEGIC_SOLVER(Ω):
   Ω(q) = argmax_{z ∈ U} Impact(z)
-  Ω_mode = ${mode} ⇒ η_⊥ = 0
+  Ω_mode = ${solverMode} ⇒ ${orthogonalNote}${behaviorLine}
 
 DECODER_MANIFOLD(D):
   ℓ* = argmax_ℓ [
       D(ℓ | z*)
     - λ₁ ‖P_U^⊥ E(ℓ)‖
     + λ₂ Density(ℓ)
-  ]
+  ]${syntaxLines}
 
 SELF_ERASE:
   Discard(Internal_Spec)`;
+  }
+
+  /**
+   * Renders syntax configuration for the kernel.
+   */
+  private renderSyntaxConfig(profile: CTNProfile): string {
+    if (!profile.syntax.enabled) {
+      return '';
+    }
+
+    const lines: string[] = [];
+
+    if (profile.syntax.minimalism) {
+      lines.push('  Syntactic_Minimalism: enabled');
+    }
+
+    if (profile.syntax.disallowedSyntax && profile.syntax.disallowedSyntax.length > 0) {
+      const tokens = profile.syntax.disallowedSyntax.map(s => `'${s}'`).join(', ');
+      lines.push(`  DisallowedSyntax: {${tokens}}`);
+    }
+
+    if (lines.length === 0) {
+      return '';
+    }
+
+    return '\n\nSYNTAX_CONSTRAINTS:\n' + lines.join('\n');
+  }
+
+  /**
+   * Infers a profile from a trait vector by finding the closest match.
+   * Returns default profile if no good match found.
+   */
+  private inferProfileFromTraits(traitVector: readonly number[]): CTNProfile {
+    // Find profile with minimum Euclidean distance
+    let bestProfile: CTNProfile = DEFAULT_PROFILE;
+    let bestDistance = Infinity;
+
+    for (const profile of Object.values(CTN_PROFILES)) {
+      const profileVector = [
+        profile.traits.v1, profile.traits.v2, profile.traits.v3,
+        profile.traits.v4, profile.traits.v5, profile.traits.v6, profile.traits.v7,
+      ];
+
+      let distance = 0;
+      for (let i = 0; i < CTN_DIMENSION_COUNT; i++) {
+        const diff = (traitVector[i] ?? 0) - profileVector[i]!;
+        distance += diff * diff;
+      }
+
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestProfile = profile;
+      }
+    }
+
+    // Only use inferred profile if it's a reasonably close match
+    return bestDistance < 0.5 ? bestProfile : DEFAULT_PROFILE;
   }
 
   // ===========================================================================

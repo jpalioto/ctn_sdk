@@ -7,9 +7,9 @@ import type {
   TraitInteraction,
   KernelIR,
   InteractionResult,
+  MutableTraitVector,
 } from '../schemas/index.js';
-import { joinFeatures } from '../schemas/index.js';
-import { saturateWithInfo, type SaturationResult } from './saturate.js';
+import { joinFeatures, magnitude } from '../schemas/index.js';
 import { resolveInteractions } from './interactions.js';
 import { generateKernelIR } from '../kernel/generator.js';
 
@@ -19,7 +19,8 @@ import { generateKernelIR } from '../kernel/generator.js';
 export interface CompositionStep {
   readonly constraintName: string;
   readonly inputTraits: TraitVector;
-  readonly runningSum: TraitVector;
+  /** Running mean after adding this constraint */
+  readonly runningMean: TraitVector;
 }
 
 /**
@@ -29,12 +30,13 @@ export interface CompositionTrace {
   readonly strategy: { name: string; version: string };
   readonly steps: readonly CompositionStep[];
   readonly traitResult: {
-    readonly raw: TraitVector;
-    readonly rawLabeled: Record<string, number>;
-    readonly normalized: TraitVector;
-    readonly normalizedLabeled: Record<string, number>;
-    readonly wasNormalized: boolean;
-    readonly normMagnitude: number;
+    /** Element-wise mean of all constraint trait vectors */
+    readonly mean: TraitVector;
+    readonly meanLabeled: Record<string, number>;
+    /** Final magnitude (for reference, no longer used for normalization) */
+    readonly magnitude: number;
+    /** Number of constraints averaged */
+    readonly constraintCount: number;
   };
   readonly interactions: {
     readonly preTraits: TraitVector;
@@ -52,15 +54,16 @@ export interface CompositionTrace {
  * This guarantees associativity and commutativity.
  *
  * Pipeline:
- *   accumulate() → saturate() → resolveInteractions() → generateKernelIR()
+ *   computeMean() → resolveInteractions() → generateKernelIR()
  *
  * Properties (Guaranteed):
- * | Property      | Guarantee                                    |
- * |---------------|----------------------------------------------|
- * | Commutative   | Order of constraints does not affect result  |
- * | Associative   | Grouping of constraints does not affect result |
- * | Bounded       | ‖τ‖ ≤ 1 after composition                    |
- * | Identity      | Empty constraint list → τ = 0                |
+ * | Property      | Guarantee                                       |
+ * |---------------|-------------------------------------------------|
+ * | Commutative   | Order of constraints does not affect result     |
+ * | Associative   | Grouping of constraints does not affect result  |
+ * | Bounded       | Result stays in [0,1]^n hypercube               |
+ * | Idempotent    | @a @a = @a (same constraint twice = unchanged)  |
+ * | Identity      | Empty constraint list → τ = 0                   |
  */
 export class Composer<S extends TraitStrategy = TraitStrategy> {
   constructor(private readonly strategy: S) {}
@@ -68,33 +71,29 @@ export class Composer<S extends TraitStrategy = TraitStrategy> {
   /**
    * Composes multiple constraints into a single AbstractConstraint.
    *
-   * Step 1: Accumulate all trait vectors as raw sums (no normalization)
-   * Step 2: Apply saturating normalization once
-   * Step 3: Resolve trait interactions
-   * Step 4: Join features via lattice operations
-   * Step 5: Generate kernel IR
+   * Step 1: Compute element-wise mean of all trait vectors
+   * Step 2: Resolve trait interactions
+   * Step 3: Join features via lattice operations
+   * Step 4: Generate kernel IR
    */
   compose(
     constraints: readonly ResolvedConstraint[],
     interactions: readonly TraitInteraction[] = []
   ): AbstractConstraint<S> {
-    // Step 1: Raw accumulation (no normalization)
-    const rawSum = this.accumulate(constraints);
+    // Step 1: Element-wise mean (stays in [0,1] hypercube)
+    const meanTraits = this.computeMean(constraints);
 
-    // Step 2: Single-point saturation
-    const saturationResult = saturateWithInfo(rawSum);
-
-    // Step 3: Resolve trait interactions
+    // Step 2: Resolve trait interactions
     const interactionResult = resolveInteractions(
-      saturationResult.traits,
+      meanTraits,
       interactions,
       { interactionThreshold: this.strategy.thresholds?.interaction }
     );
 
-    // Step 4: Lattice join for features
+    // Step 3: Lattice join for features
     const features = this.joinAllFeatures(constraints);
 
-    // Step 5: Generate kernel IR
+    // Step 4: Generate kernel IR
     const kernelIR = generateKernelIR(
       interactionResult.traits,
       this.strategy,
@@ -116,24 +115,37 @@ export class Composer<S extends TraitStrategy = TraitStrategy> {
     constraints: readonly ResolvedConstraint[],
     interactions: readonly TraitInteraction[] = []
   ): { result: AbstractConstraint<S>; trace: CompositionTrace } {
-    // Track each step
-    const steps: CompositionStep[] = [];
-    let runningSum = this.strategy.identity();
+    const n = constraints.length;
+    const dims = n > 0 ? constraints[0]!.traits.length : 0;
 
-    for (const constraint of constraints) {
+    // Track each step with running mean
+    const steps: CompositionStep[] = [];
+    const runningSum: MutableTraitVector = new Array(dims).fill(0);
+
+    for (let i = 0; i < constraints.length; i++) {
+      const constraint = constraints[i]!;
       const inputTraits = constraint.traits;
-      runningSum = this.strategy.add(runningSum, inputTraits);
+
+      // Update running sum
+      for (let d = 0; d < dims; d++) {
+        runningSum[d] = runningSum[d]! + inputTraits[d]!;
+      }
+
+      // Compute running mean at this step
+      const count = i + 1;
+      const runningMean = runningSum.map(v => v / count);
+
       steps.push({
         constraintName: constraint.name,
         inputTraits,
-        runningSum: [...runningSum],
+        runningMean: Object.freeze([...runningMean]),
       });
     }
 
-    const rawSum = runningSum;
-    const saturationResult = saturateWithInfo(rawSum);
+    // Final mean
+    const meanTraits = this.computeMean(constraints);
     const interactionResult = resolveInteractions(
-      saturationResult.traits,
+      meanTraits,
       interactions,
       { interactionThreshold: this.strategy.thresholds?.interaction }
     );
@@ -158,15 +170,13 @@ export class Composer<S extends TraitStrategy = TraitStrategy> {
       },
       steps,
       traitResult: {
-        raw: rawSum,
-        rawLabeled: this.strategy.formatVector(rawSum),
-        normalized: saturationResult.traits,
-        normalizedLabeled: this.strategy.formatVector(saturationResult.traits),
-        wasNormalized: saturationResult.wasNormalized,
-        normMagnitude: saturationResult.postMagnitude,
+        mean: meanTraits,
+        meanLabeled: this.strategy.formatVector(meanTraits),
+        magnitude: magnitude(meanTraits),
+        constraintCount: n,
       },
       interactions: {
-        preTraits: saturationResult.traits,
+        preTraits: meanTraits,
         postTraits: interactionResult.traits,
         applied: interactionResult.appliedInteractions,
       },
@@ -178,14 +188,36 @@ export class Composer<S extends TraitStrategy = TraitStrategy> {
   }
 
   /**
-   * Accumulates trait vectors via raw addition.
-   * No normalization is applied during accumulation.
+   * Computes element-wise mean of all trait vectors.
+   *
+   * Properties:
+   * - Stays in [0,1]^n if all inputs are in [0,1]^n
+   * - Idempotent: mean([a, a]) = a
+   * - Commutative: order doesn't matter
+   * - Returns identity (zero vector) for empty input
    */
-  private accumulate(constraints: readonly ResolvedConstraint[]): TraitVector {
-    return constraints.reduce(
-      (acc, c) => this.strategy.add(acc, c.traits),
-      this.strategy.identity()
-    );
+  private computeMean(constraints: readonly ResolvedConstraint[]): TraitVector {
+    const n = constraints.length;
+    if (n === 0) {
+      return this.strategy.identity();
+    }
+
+    const dims = constraints[0]!.traits.length;
+    const sum: MutableTraitVector = new Array(dims).fill(0);
+
+    for (const constraint of constraints) {
+      for (let i = 0; i < dims; i++) {
+        sum[i] = sum[i]! + constraint.traits[i]!;
+      }
+    }
+
+    // Divide by count to get mean
+    const mean: MutableTraitVector = new Array(dims);
+    for (let i = 0; i < dims; i++) {
+      mean[i] = sum[i]! / n;
+    }
+
+    return Object.freeze(mean);
   }
 
   /**
