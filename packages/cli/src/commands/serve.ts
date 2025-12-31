@@ -445,6 +445,7 @@ export interface SendRequest {
 
 export interface SendResponse {
   output: string;
+  kernel: string;
   provider: string;
   model: string;
   tokens: {
@@ -528,6 +529,15 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
 
   const server = Fastify({
     logger: false,
+  });
+
+  // Ensure UTF-8 charset in JSON responses (for Greek symbols Σ, Ψ, Ω, τ)
+  server.addHook('onSend', async (_request, reply, payload) => {
+    const contentType = reply.getHeader('content-type');
+    if (typeof contentType === 'string' && contentType.includes('application/json')) {
+      reply.header('content-type', 'application/json; charset=utf-8');
+    }
+    return payload;
   });
 
   // Request timing hook - start timer
@@ -670,9 +680,10 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         tokensOut: response.usage.outputTokens,
       };
 
-      // Return normal response
+      // Return normal response with kernel
       return {
         output: response.content,
+        kernel: trace.config.kernel,
         provider: providerName,
         model: response.model,
         tokens: {
