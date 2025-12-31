@@ -632,7 +632,7 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
       request.requestInput = body.input;
 
       // Route request through queue with retry for transient failures
-      const response = await queue.add(providerName, () =>
+      const { response, trace } = await queue.add(providerName, () =>
         withRetry(
           () =>
             processSend(body.input, {
@@ -647,24 +647,39 @@ export function createServer(options: CreateServerOptions = {}): FastifyInstance
         )
       );
 
-      // Return dry-run response
-      if ('dryRun' in response) {
+      // Handle dry-run response
+      if (response.dryRun && response.request) {
         // Store response data for debug logging
         request.responseData = {
-          outputLength: response.dryRun.systemPrompt.length + response.dryRun.userPrompt.length,
+          outputLength: response.request.systemPrompt.length + (response.request.messages[0]?.content.length ?? 0),
         };
-        return response.dryRun;
+        return {
+          dryRun: true as const,
+          provider: response.request.provider,
+          model: response.model,
+          systemPrompt: response.request.systemPrompt,
+          userPrompt: response.request.messages[0]?.content ?? '',
+          parameters: response.request.parameters,
+        };
       }
 
       // Store response data for debug logging
       request.responseData = {
-        outputLength: response.result.output.length,
-        tokensIn: response.result.tokens.input,
-        tokensOut: response.result.tokens.output,
+        outputLength: response.content.length,
+        tokensIn: response.usage.inputTokens,
+        tokensOut: response.usage.outputTokens,
       };
 
       // Return normal response
-      return response.result;
+      return {
+        output: response.content,
+        provider: providerName,
+        model: response.model,
+        tokens: {
+          input: response.usage.inputTokens,
+          output: response.usage.outputTokens,
+        },
+      };
     } catch (error) {
       // Sanitize error - never expose stack traces or internal paths
       const safeError = sanitizeError(error, { logger: errorLogger });

@@ -199,7 +199,7 @@ export class AnthropicProvider extends BaseCTNProvider {
     messages: readonly Message[],
     options: SendOptions = {}
   ): Promise<ProviderResponse> {
-    const { overrides = {}, systemPrefix = '', signal } = options;
+    const { overrides = {}, signal } = options;
 
     // Resolve model ID (handle aliases)
     const modelId = resolveModelId(config.model);
@@ -209,10 +209,8 @@ export class AnthropicProvider extends BaseCTNProvider {
       throw new Error(`Unknown model: ${config.model}`);
     }
 
-    // Build system prompt
-    const systemPrompt = systemPrefix
-      ? `${systemPrefix}\n\n${config.kernel}`
-      : config.kernel;
+    // The kernel IS the system prompt - no prefixes allowed
+    const systemPrompt = config.kernel;
 
     // Calculate token budget
     const maxTokens = this.resolveMaxTokens(config, overrides, modelConfig);
@@ -274,7 +272,7 @@ export class AnthropicProvider extends BaseCTNProvider {
     messages: readonly Message[],
     options: SendOptions = {}
   ): AsyncIterableIterator<StreamChunk> {
-    const { overrides = {}, systemPrefix = '', signal } = options;
+    const { overrides = {}, signal } = options;
 
     // Resolve model ID
     const modelId = resolveModelId(config.model);
@@ -284,10 +282,8 @@ export class AnthropicProvider extends BaseCTNProvider {
       throw new Error(`Unknown model: ${config.model}`);
     }
 
-    // Build system prompt
-    const systemPrompt = systemPrefix
-      ? `${systemPrefix}\n\n${config.kernel}`
-      : config.kernel;
+    // The kernel IS the system prompt - no prefixes allowed
+    const systemPrompt = config.kernel;
 
     // Calculate token budget
     const maxTokens = this.resolveMaxTokens(config, overrides, modelConfig);

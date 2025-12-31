@@ -161,14 +161,14 @@ export class GoogleProvider extends BaseCTNProvider {
     messages: readonly Message[],
     options: SendOptions = {}
   ): Promise<ProviderResponse> {
-    const { overrides = {}, systemPrefix = '' } = options;
+    const { overrides = {} } = options;
 
     // Resolve model ID
     const modelId = resolveModelId(config.model);
     const modelConfig = this.getModel(modelId);
 
-    // Build system prompt
-    const systemPrompt = systemPrefix ? `${systemPrefix}\n\n${config.kernel}` : config.kernel;
+    // The kernel IS the system prompt - no prefixes allowed
+    const systemPrompt = config.kernel;
 
     // Calculate token budget
     const maxTokens = this.resolveMaxTokens(config, overrides, modelConfig);
@@ -237,14 +237,14 @@ export class GoogleProvider extends BaseCTNProvider {
     messages: readonly Message[],
     options: SendOptions = {}
   ): AsyncIterableIterator<StreamChunk> {
-    const { overrides = {}, systemPrefix = '' } = options;
+    const { overrides = {} } = options;
 
     // Resolve model ID
     const modelId = resolveModelId(config.model);
     const modelConfig = this.getModel(modelId);
 
-    // Build system prompt
-    const systemPrompt = systemPrefix ? `${systemPrefix}\n\n${config.kernel}` : config.kernel;
+    // The kernel IS the system prompt - no prefixes allowed
+    const systemPrompt = config.kernel;
 
     // Calculate token budget
     const maxTokens = this.resolveMaxTokens(config, overrides, modelConfig);

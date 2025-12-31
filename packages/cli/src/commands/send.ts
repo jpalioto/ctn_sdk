@@ -7,7 +7,15 @@ import {
   type ResolvedConstraint,
   type AbstractConstraint,
 } from '@ctn/language';
-import { sanitizeInput, type Message, type ProjectedConfig, type BaseCTNProvider } from '@ctn/core';
+import {
+  sanitizeInput,
+  DryRunProvider,
+  type Message,
+  type ProjectedConfig,
+  type BaseCTNProvider,
+  type CTNProvider,
+  type ProviderResponse,
+} from '@ctn/core';
 import { formatTrace, formatDryRun } from '../output/formatter.js';
 import {
   fetchGrounding,
@@ -26,23 +34,13 @@ export interface SendOptions {
   dryRun?: boolean;
 }
 
+/**
+ * Unified result from processSend.
+ * Provider determines response type via dryRun flag.
+ */
 export interface SendResult {
-  output: string;
-  provider: string;
-  model: string;
-  tokens: {
-    input: number;
-    output: number;
-  };
-}
-
-export interface DryRunResult {
-  dryRun: true;
-  provider: string;
-  model: string;
-  systemPrompt: string;
-  userPrompt: string;
-  parameters: Record<string, unknown>;
+  response: ProviderResponse;
+  trace: TraceInfo;
 }
 
 export interface TraceInfo {
@@ -110,23 +108,37 @@ export interface ProcessSendOptions {
 }
 
 /**
- * Core send processing logic - reusable by CLI and HTTP server.
- * Returns results instead of printing to console.
+ * Built request - contains everything needed to send to a provider.
+ * This structure is identical regardless of dry-run, stream, or normal mode.
+ */
+export interface BuiltRequest {
+  config: ProjectedConfig;
+  messages: Message[];
+  trace: TraceInfo;
+}
+
+/**
+ * Builds a complete request - always identical, no branches for dry-run/stream.
+ *
+ * This is the single source of truth for request construction.
+ * Whether the request is executed, streamed, or dry-run depends on
+ * which provider's send() method is called afterward.
  *
  * @param input - The prompt with optional @constraints
- * @param options - Processing options including optional pre-created provider
+ * @param options - Processing options
+ * @returns Built request ready for any provider
  */
-export async function processSend(
+export async function buildRequest(
   input: string,
   options: ProcessSendOptions
-): Promise<{ result: SendResult; trace?: TraceInfo } | { dryRun: DryRunResult; trace?: TraceInfo }> {
+): Promise<BuiltRequest> {
   // Sanitize input before processing
   const sanitizedInput = sanitizeInput(input);
 
   const providerName = options.provider ?? 'anthropic';
   const strategyName = options.strategy ?? 'operational';
 
-  // Initialize strategy and provider (use provided instance or create new)
+  // Initialize strategy and provider for projection
   const strategy = getStrategy(strategyName);
   const provider = options.providerInstance ?? getProvider(providerName);
 
@@ -145,6 +157,14 @@ export async function processSend(
   // Project to provider-specific config
   const config: ProjectedConfig = provider.project(constraint, model);
 
+  // Build final prompt with grounding context
+  const promptWithContext = groundingResult
+    ? formatGroundingContext(groundingResult.content, groundingResult.source) + '\n\n' + cleanPrompt
+    : cleanPrompt;
+
+  // Build messages
+  const messages: Message[] = [{ role: 'user', content: promptWithContext }];
+
   // Build trace info
   const trace: TraceInfo = {
     constraint,
@@ -154,44 +174,38 @@ export async function processSend(
     providerName,
   };
 
-  // If dry-run, return config without API call
-  if (options.dryRun) {
-    return {
-      dryRun: {
-        dryRun: true,
-        provider: providerName,
-        model: config.model,
-        systemPrompt: config.kernel,
-        userPrompt: cleanPrompt,
-        parameters: config.apiParams,
-      },
-      trace,
-    };
-  }
+  return { config, messages, trace };
+}
 
-  // Build final prompt with grounding context
-  const promptWithContext = groundingResult
-    ? formatGroundingContext(groundingResult.content, groundingResult.source) + '\n\n' + cleanPrompt
-    : cleanPrompt;
+/**
+ * Core send processing logic - reusable by CLI and HTTP server.
+ * Uses single code path: buildRequest() → provider.send()
+ *
+ * The provider determines behavior:
+ * - Real provider: makes API call
+ * - DryRunProvider: returns request without API call
+ *
+ * @param input - The prompt with optional @constraints
+ * @param options - Processing options including optional pre-created provider
+ */
+export async function processSend(
+  input: string,
+  options: ProcessSendOptions
+): Promise<SendResult> {
+  const providerName = options.provider ?? 'anthropic';
 
-  // Build messages
-  const messages: Message[] = [{ role: 'user', content: promptWithContext }];
+  // Build request - ALWAYS the same, complete
+  const { config, messages, trace } = await buildRequest(input, options);
 
-  // Send request (non-streaming for HTTP)
+  // Get provider - DryRunProvider if dry-run, else real provider
+  const provider: CTNProvider = options.dryRun
+    ? new DryRunProvider(providerName)
+    : (options.providerInstance ?? getProvider(providerName));
+
+  // Single call - provider determines behavior
   const response = await provider.send(config, messages);
 
-  return {
-    result: {
-      output: response.content,
-      provider: providerName,
-      model: config.model,
-      tokens: {
-        input: response.usage.inputTokens,
-        output: response.usage.outputTokens,
-      },
-    },
-    trace,
-  };
+  return { response, trace };
 }
 
 /**
@@ -204,42 +218,32 @@ export async function sendCommand(
   const { provider: providerName, model: modelOption, strategy: strategyName, ground, stream, trace, dryRun } = options;
 
   try {
-    // Sanitize input for all paths
-    const sanitizedPrompt = sanitizeInput(prompt);
+    // Build request once - identical for all modes
+    const { config, messages, trace: traceInfo } = await buildRequest(prompt, {
+      provider: providerName,
+      model: modelOption,
+      strategy: strategyName,
+      ground,
+    });
 
-    // For streaming, we need special handling
+    // Show trace if requested (before response for streaming visibility)
+    if (trace) {
+      formatTrace(
+        traceInfo.constraint,
+        traceInfo.config,
+        traceInfo.strategy,
+        traceInfo.groundingResult,
+        traceInfo.providerName
+      );
+    }
+
+    // Get provider - DryRunProvider if dry-run, else real provider
+    const provider: CTNProvider = dryRun
+      ? new DryRunProvider(providerName)
+      : getProvider(providerName);
+
+    // Streaming mode
     if (stream && !dryRun) {
-      // Initialize strategy and provider
-      const strategy = getStrategy(strategyName);
-      const provider = getProvider(providerName);
-      const model = modelOption || getDefaultModel(providerName);
-
-      // Fetch grounding content if requested
-      let groundingResult: GroundingResult | null = null;
-      if (ground) {
-        groundingResult = await fetchGrounding(ground);
-      }
-
-      // Parse prompt and extract constraints (using sanitized input)
-      const { constraint, cleanPrompt } = parsePromptWithConstraints(sanitizedPrompt, strategy);
-
-      // Project to provider-specific config
-      const config: ProjectedConfig = provider.project(constraint, model);
-
-      // Show trace if requested
-      if (trace) {
-        formatTrace(constraint, config, strategy, groundingResult, providerName);
-      }
-
-      // Build final prompt with grounding context
-      const promptWithContext = groundingResult
-        ? formatGroundingContext(groundingResult.content, groundingResult.source) + '\n\n' + cleanPrompt
-        : cleanPrompt;
-
-      // Build messages
-      const messages: Message[] = [{ role: 'user', content: promptWithContext }];
-
-      // Streaming response
       const streamIterator = provider.sendStream(config, messages);
 
       for await (const chunk of streamIterator) {
@@ -258,37 +262,20 @@ export async function sendCommand(
       return;
     }
 
-    // Non-streaming: use shared processSend (input is sanitized within processSend)
-    const response = await processSend(sanitizedPrompt, {
-      provider: providerName,
-      model: modelOption,
-      strategy: strategyName,
-      ground,
-      dryRun,
-    });
-
-    // Show trace if requested
-    if (trace && response.trace) {
-      formatTrace(
-        response.trace.constraint,
-        response.trace.config,
-        response.trace.strategy,
-        response.trace.groundingResult,
-        response.trace.providerName
-      );
-    }
+    // Non-streaming: single send call
+    const response = await provider.send(config, messages);
 
     // Handle dry-run output
-    if ('dryRun' in response) {
-      formatDryRun(response.trace!.config, response.dryRun.userPrompt, response.trace!.strategy);
+    if (response.dryRun && response.request) {
+      formatDryRun(config, response.request.messages[0]?.content ?? '', traceInfo.strategy);
       return;
     }
 
     // Normal output
-    console.log(response.result.output);
+    console.log(response.content);
 
     if (trace) {
-      console.log(`\n[Tokens: ${response.result.tokens.input} in, ${response.result.tokens.output} out]`);
+      console.log(`\n[Tokens: ${response.usage.inputTokens} in, ${response.usage.outputTokens} out]`);
     }
   } catch (error) {
     if (error instanceof Error) {
@@ -298,4 +285,14 @@ export async function sendCommand(
     }
     process.exit(1);
   }
+}
+
+// Re-export for backward compatibility with existing consumers
+export interface DryRunResult {
+  dryRun: true;
+  provider: string;
+  model: string;
+  systemPrompt: string;
+  userPrompt: string;
+  parameters: Record<string, unknown>;
 }

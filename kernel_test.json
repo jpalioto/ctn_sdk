@@ -1,0 +1,203 @@
+{
+  "timestamp": "2025-12-31T14:48:52.644Z",
+  "strategy": {
+    "name": "ctn",
+    "version": "1.0.0"
+  },
+  "model": "sonnet",
+  "prompt": "hello",
+  "projectedConfig": {
+    "apiParams": {
+      "temperature": 0.648,
+      "top_k": 60
+    },
+    "features": {},
+    "contextPolicy": {
+      "type": "all"
+    }
+  },
+  "kernel": "CTN_KERNEL_SCHEMA(╬ú_CTN) ΓåÉ {\n  SYS_KERNEL_INIT(╬¿_global),\n  COGNITIVE_TENSORS(U),\n  STRATEGIC_SOLVER(╬⌐),\n  DECODER_MANIFOLD(D),\n  SELF_ERASE\n}\n\nSYS_KERNEL_INIT(╬¿_global) ΓåÉ\n{ Auth:P_spec, Filter:╬á_safe ΓåÆ M_feasible }\n\nCOGNITIVE_TENSORS(U):\n  Trait_Profile ╧ä = [0.70, 0.80, 0.50, 0.80, 0.60, 0.30, 0.00]\n  C_net = ╬ú ( ╧äß╡ó ┬╖ vß╡ó )\n  Temperature: T = 0.50\n\n  vΓéü = { ╬╡_hid ΓåÆ 0Γü║, Atomic_Clarity }\n  vΓéé = { ╬║(f) ΓåÆ min, Specification_Accuracy }\n  vΓéâ = { ╬ª:WΓåÆI, Context_Isolation }\n  vΓéä = { ╧Ç_gl Γë½ ╧Ç_loc, Structure_Over_Narrative }\n  vΓéà = { ΓêéA Γëí A, Framing_Detachment }\n  vΓéå = { U \\ S, Explore_Kernel_Space }\n  vΓéç = { CTN_Form, Schema_Compliance }\n\nSTRATEGIC_SOLVER(╬⌐):\n  ╬⌐(q) = argmax_{z Γêê U} Impact(z)\n  ╬⌐_mode = Analysis ΓçÆ ╬╖_ΓèÑ = 0\n  Behavior: Deconstruct(╬ª)\n\nDECODER_MANIFOLD(D):\n  Γäô* = argmax_Γäô [\n      D(Γäô | z*)\n    - ╬╗Γéü ΓÇûP_U^ΓèÑ E(Γäô)ΓÇû\n    + ╬╗Γéé Density(Γäô)\n  ]\n\nSELF_ERASE:\n  Discard(Internal_Spec)",
+  "kernelIR": {
+    "strategyName": "ctn",
+    "strategyVersion": "1.0.0",
+    "clauses": [
+      {
+        "traitId": "v1",
+        "traitIndex": 0,
+        "intensity": "high",
+        "polarity": "positive",
+        "text": "Sharp boundaries"
+      },
+      {
+        "traitId": "v2",
+        "traitIndex": 1,
+        "intensity": "high",
+        "polarity": "positive",
+        "text": "Precise reasoning"
+      },
+      {
+        "traitId": "v3",
+        "traitIndex": 2,
+        "intensity": "medium",
+        "polarity": "positive",
+        "text": "Isolated focus"
+      },
+      {
+        "traitId": "v4",
+        "traitIndex": 3,
+        "intensity": "high",
+        "polarity": "positive",
+        "text": "Structural integrity"
+      },
+      {
+        "traitId": "v5",
+        "traitIndex": 4,
+        "intensity": "medium",
+        "polarity": "positive",
+        "text": "Premise correction"
+      },
+      {
+        "traitId": "v6",
+        "traitIndex": 5,
+        "intensity": "low",
+        "polarity": "positive",
+        "text": "Broad exploration"
+      }
+    ],
+    "omittedTraits": [
+      "v7"
+    ],
+    "modifiedClauses": [],
+    "traitVector": [
+      0.7,
+      0.8,
+      0.5,
+      0.8,
+      0.6,
+      0.3,
+      0
+    ]
+  },
+  "projectionDetails": {
+    "temperature": {
+      "baseline": 0.8,
+      "dotProduct": -0.38,
+      "scaled": -0.15200000000000002,
+      "unclippedDelta": -0.15200000000000002,
+      "raw": 0.648,
+      "clipped": 0.648,
+      "wasClipped": false,
+      "contributions": [
+        {
+          "traitId": "v1",
+          "traitIndex": 0,
+          "weight": -0.3,
+          "traitValue": 0.7,
+          "contribution": -0.21
+        },
+        {
+          "traitId": "v2",
+          "traitIndex": 1,
+          "weight": -0.2,
+          "traitValue": 0.8,
+          "contribution": -0.16000000000000003
+        },
+        {
+          "traitId": "v3",
+          "traitIndex": 2,
+          "weight": 0,
+          "traitValue": 0.5,
+          "contribution": 0
+        },
+        {
+          "traitId": "v4",
+          "traitIndex": 3,
+          "weight": -0.2,
+          "traitValue": 0.8,
+          "contribution": -0.16000000000000003
+        },
+        {
+          "traitId": "v5",
+          "traitIndex": 4,
+          "weight": 0,
+          "traitValue": 0.6,
+          "contribution": 0
+        },
+        {
+          "traitId": "v6",
+          "traitIndex": 5,
+          "weight": 0.5,
+          "traitValue": 0.3,
+          "contribution": 0.15
+        },
+        {
+          "traitId": "v7",
+          "traitIndex": 6,
+          "weight": 0,
+          "traitValue": 0,
+          "contribution": 0
+        }
+      ]
+    },
+    "top_k": {
+      "baseline": 50,
+      "dotProduct": 0.4,
+      "scaled": 10,
+      "unclippedDelta": 10,
+      "raw": 60,
+      "clipped": 60,
+      "wasClipped": false,
+      "contributions": [
+        {
+          "traitId": "v1",
+          "traitIndex": 0,
+          "weight": 0.4,
+          "traitValue": 0.7,
+          "contribution": 0.27999999999999997
+        },
+        {
+          "traitId": "v2",
+          "traitIndex": 1,
+          "weight": 0,
+          "traitValue": 0.8,
+          "contribution": 0
+        },
+        {
+          "traitId": "v3",
+          "traitIndex": 2,
+          "weight": 0,
+          "traitValue": 0.5,
+          "contribution": 0
+        },
+        {
+          "traitId": "v4",
+          "traitIndex": 3,
+          "weight": 0.3,
+          "traitValue": 0.8,
+          "contribution": 0.24
+        },
+        {
+          "traitId": "v5",
+          "traitIndex": 4,
+          "weight": 0,
+          "traitValue": 0.6,
+          "contribution": 0
+        },
+        {
+          "traitId": "v6",
+          "traitIndex": 5,
+          "weight": -0.4,
+          "traitValue": 0.3,
+          "contribution": -0.12
+        },
+        {
+          "traitId": "v7",
+          "traitIndex": 6,
+          "weight": 0.3,
+          "traitValue": 0,
+          "contribution": 0
+        }
+      ]
+    }
+  }
+}

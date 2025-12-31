@@ -5,6 +5,7 @@ export type {
   ProjectedConfig,
   SendOptions,
   ProviderResponse,
+  CapturedRequest,
   StreamChunk,
   FeatureClampEvent,
   OverrideCollision,
@@ -14,6 +15,7 @@ export type {
 } from './types.js';
 
 export { BaseCTNProvider } from './base.js';
+export { DryRunProvider } from './dry-run-provider.js';
 
 export {
   ProviderError,

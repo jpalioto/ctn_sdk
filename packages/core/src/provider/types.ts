@@ -55,10 +55,20 @@ export interface ProjectedConfig {
 export interface SendOptions {
   /** Manual parameter overrides (highest precedence) */
   readonly overrides?: Record<string, unknown>;
-  /** System prompt prefix (prepended to kernel) */
-  readonly systemPrefix?: string;
   /** Abort signal for cancellation */
   readonly signal?: AbortSignal;
+}
+
+/**
+ * Captured request for dry-run and debugging.
+ * Contains all information that would be sent to the API.
+ */
+export interface CapturedRequest {
+  readonly systemPrompt: string;
+  readonly messages: readonly Message[];
+  readonly parameters: Record<string, unknown>;
+  readonly model: string;
+  readonly provider: string;
 }
 
 /**
@@ -73,6 +83,10 @@ export interface ProviderResponse {
     readonly inputTokens: number;
     readonly outputTokens: number;
   };
+  /** True if this is a dry-run response (no API call made) */
+  readonly dryRun?: boolean;
+  /** Captured request for dry-run responses */
+  readonly request?: CapturedRequest;
 }
 
 /**
