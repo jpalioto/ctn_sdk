@@ -96,11 +96,10 @@ describe('CTN Profiles', () => {
       assert.equal(profile.solver.mode, 'Analysis');
     });
 
-    it('creative has high exploration and Counter mode', () => {
+    it('creative has high exploration and Analysis mode', () => {
       const profile = CTN_PROFILES['creative']!;
       assert.ok(profile.traits.v6 >= 0.8, 'creative should have high v6 (Exploration)');
-      assert.equal(profile.solver.mode, 'Counter');
-      assert.ok(profile.solver.orthogonalInjection);
+      assert.equal(profile.solver.mode, 'Analysis');
     });
 
     it('terse has syntax minimalism enabled', () => {
@@ -228,7 +227,7 @@ describe('CTN Profiles', () => {
 
     it('Counter mode wins in combination', () => {
       const analysisProfile = CTN_PROFILES['analytical']!;
-      const counterProfile = CTN_PROFILES['creative']!;
+      const counterProfile = CTN_PROFILES['adversarial']!;
 
       const combined = combineProfiles([analysisProfile, counterProfile]);
 

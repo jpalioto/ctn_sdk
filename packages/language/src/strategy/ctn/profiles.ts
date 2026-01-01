@@ -86,17 +86,19 @@ export const CTN_PROFILES: Readonly<Record<string, CTNProfile>> = Object.freeze(
   // Universal constraint profiles (best-effort CTN mappings)
   // ===========================================================================
 
+  // @analytical - Max rigor, constrained search (extreme τ for diagnostic testing)
   analytical: {
     name: 'analytical',
-    traits: { v1: 0.90, v2: 0.90, v3: 0.50, v4: 0.80, v5: 0.60, v6: 0.50, v7: 0.80, v8: 0.70, v9: 0.80 },
+    traits: { v1: 1, v2: 1, v3: 1, v4: 1, v5: 1, v6: 0, v7: 1, v8: 1, v9: 1 },
     temperature: 0.5,
     solver: { mode: 'Analysis', behavior: 'Deconstruct(Φ)', orthogonalInjection: false },
     syntax: { enabled: false, minimalism: false },
   },
 
+  // @terse - Minimal output, max syntactic minimalism (extreme τ for diagnostic testing)
   terse: {
     name: 'terse',
-    traits: { v1: 0.50, v2: 0.60, v3: 0.50, v4: 0.70, v5: 0.70, v6: 0.30, v7: 1.00, v8: 0.90, v9: 0.50 },
+    traits: { v1: 0, v2: 0, v3: 0, v4: 1, v5: 1, v6: 0, v7: 1, v8: 1, v9: 0 },
     temperature: 0.4,
     solver: { mode: 'Analysis', orthogonalInjection: false },
     syntax: { enabled: true, disallowedSyntax: ['—', '–', ';', '...'], minimalism: true },
@@ -118,11 +120,12 @@ export const CTN_PROFILES: Readonly<Record<string, CTNProfile>> = Object.freeze(
     syntax: { enabled: false, minimalism: false },
   },
 
+  // @creative - Only Unbound_Search enabled (extreme τ for diagnostic testing)
   creative: {
     name: 'creative',
-    traits: { v1: 0.40, v2: 0.50, v3: 0.30, v4: 0.40, v5: 0.30, v6: 0.95, v7: 0.30, v8: 0.30, v9: 0.30 },
+    traits: { v1: 0, v2: 0, v3: 0, v4: 0, v5: 0, v6: 1, v7: 0, v8: 0, v9: 0 },
     temperature: 0.9,
-    solver: { mode: 'Counter', behavior: 'Inject(η_⊥)', orthogonalInjection: true },
+    solver: { mode: 'Analysis', orthogonalInjection: false },
     syntax: { enabled: false, minimalism: false },
   },
 
@@ -231,9 +234,10 @@ export const CTN_PROFILES: Readonly<Record<string, CTNProfile>> = Object.freeze(
   // Adversarial constraint (v1.0 spec - Counter mode with error correction)
   // ===========================================================================
 
+  // @adversarial - Max rigor, correction, anti-sycophancy (extreme τ for diagnostic testing)
   adversarial: {
     name: 'adversarial',
-    traits: { v1: 0.95, v2: 0.95, v3: 0.90, v4: 0.90, v5: 0.95, v6: 0.60, v7: 0.85, v8: 1.00, v9: 0.95 },
+    traits: { v1: 1, v2: 1, v3: 1, v4: 1, v5: 1, v6: 0, v7: 1, v8: 1, v9: 1 },
     temperature: 0.3,
     solver: {
       mode: 'Counter',
