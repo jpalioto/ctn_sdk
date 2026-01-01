@@ -7,14 +7,16 @@ import { CTN_PROFILES, traitsToArray, type CTNProfile } from './profiles.js';
  * This module derives trait mappings from CTN profiles.
  * The profiles module is the source of truth for CTN constraint definitions.
  *
- * CTN's 7-dimensional trait space:
- * - v1: Atomic Clarity (sharp concept boundaries)
- * - v2: Specification Accuracy (smooth predictable reasoning)
- * - v3: Context Isolation (task-relevant focus)
- * - v4: Structure Over Narrative (global consistency)
- * - v5: Framing Detachment (rejects false premises)
- * - v6: Exploration (unbound search)
- * - v7: Schema Compliance (structured output)
+ * CTN v1.0 9-dimensional trait space (per ctn_core VECTORS.md):
+ * - v1: Atomic Derivation (ε_hid → 0⁺)
+ * - v2: Assertion Rigor (κ(f) → min)
+ * - v3: Frame Isolation (Φ: W → I)
+ * - v4: Global Invariance (π_gl ≫ π_loc)
+ * - v5: Orthogonal Detachment (∂A ≡ A)
+ * - v6: Unbound Search (U \ S)
+ * - v7: Syntactic Minimalism (ℒ_out ⊂ {minimal})
+ * - v8: Anti Sycophancy (Sycophancy → 0, Paternalism → 0)
+ * - v9: Satisfiability Guard (P(z|q) < γ ⇒ Reject(q))
  */
 
 /**
@@ -23,7 +25,7 @@ import { CTN_PROFILES, traitsToArray, type CTNProfile } from './profiles.js';
 export type TraitMap = Readonly<Record<string, number>>;
 
 /**
- * Convert profile traits object to TraitMap format.
+ * Convert profile traits object to TraitMap format (9D).
  */
 function profileToTraitMap(profile: CTNProfile): TraitMap {
   return {
@@ -34,6 +36,8 @@ function profileToTraitMap(profile: CTNProfile): TraitMap {
     v5: profile.traits.v5,
     v6: profile.traits.v6,
     v7: profile.traits.v7,
+    v8: profile.traits.v8,
+    v9: profile.traits.v9,
   };
 }
 

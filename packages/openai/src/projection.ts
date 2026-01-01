@@ -32,6 +32,9 @@ export const OPERATIONAL_PROJECTION_MATRIX: ProjectionMatrix = {
 
 /**
  * Projection matrix for CTN strategy on OpenAI models.
+ *
+ * CTN v1.0 uses 9 dimensions per ctn_core:
+ *   v1-v9: See Anthropic projection for full dimension list
  */
 export const CTN_PROJECTION_MATRIX: ProjectionMatrix = {
   baseline: {
@@ -40,9 +43,9 @@ export const CTN_PROJECTION_MATRIX: ProjectionMatrix = {
   },
 
   weights: {
-    //              v1    v2    v3    v4    v5    v6    v7
-    temperature: [-0.3, -0.2, 0.0, -0.2, 0.0, 0.5, 0.0],
-    top_p: [-0.1, -0.1, 0.0, -0.1, 0.0, 0.2, 0.0],
+    //              v1    v2    v3    v4    v5    v6    v7    v8    v9
+    temperature: [-0.3, -0.2, 0.0, -0.2, 0.0, 0.5, 0.0, -0.1, -0.1],
+    top_p: [-0.1, -0.1, 0.0, -0.1, 0.0, 0.2, 0.0, 0.0, -0.1],
   },
 
   scale: {

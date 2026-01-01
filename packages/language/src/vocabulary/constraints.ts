@@ -135,6 +135,11 @@ export const UNIVERSAL_CONSTRAINTS: readonly UniversalConstraint[] = Object.free
     aliases: [],
     type: 'steering',
   },
+  {
+    name: 'adversarial',
+    aliases: ['counter'],
+    type: 'steering',
+  },
 
   // ============================================================================
   // Mechanical constraints - configuration settings

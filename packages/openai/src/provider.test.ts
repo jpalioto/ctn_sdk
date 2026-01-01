@@ -170,9 +170,9 @@ describe('Projection Matrices', () => {
       expect(CTN_PROJECTION_MATRIX.clamps).toBeDefined();
     });
 
-    it('has 7-element weight arrays', () => {
+    it('has 9-element weight arrays (v1.0 spec)', () => {
       for (const weights of Object.values(CTN_PROJECTION_MATRIX.weights)) {
-        expect(weights).toHaveLength(7);
+        expect(weights).toHaveLength(9);
       }
     });
   });

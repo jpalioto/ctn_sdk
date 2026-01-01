@@ -79,17 +79,19 @@ export const OPERATIONAL_PROJECTION_MATRIX: ProjectionMatrix = {
 /**
  * Projection matrix for the CTN strategy on Anthropic Claude models.
  *
- * Maps the 7-dimensional CTN trait space to Anthropic API parameters.
+ * Maps the 9-dimensional CTN trait space (v1.0 spec) to Anthropic API parameters.
  * CTN uses 0-1 range (0 = no constraint, 1 = maximum constraint).
  *
- * CTN dimensions (v1.0.0):
- *   v1 (idx 0): Atomic Clarity       (0-1, higher = sharper concept boundaries)
- *   v2 (idx 1): Specification Accuracy (0-1, higher = smoother reasoning path)
- *   v3 (idx 2): Context Isolation    (0-1, higher = more focused)
- *   v4 (idx 3): Structure Over Narrative (0-1, higher = global consistency)
- *   v5 (idx 4): Framing Detachment   (0-1, higher = reject false premises)
- *   v6 (idx 5): Exploration          (0-1, higher = more exploratory)
- *   v7 (idx 6): Schema Compliance    (0-1, higher = structured output)
+ * CTN dimensions (v1.0.0 - 9D per ctn_core):
+ *   v1 (idx 0): Atomic Derivation    (0-1, higher = sharper concept boundaries)
+ *   v2 (idx 1): Assertion Rigor      (0-1, higher = smoother reasoning path)
+ *   v3 (idx 2): Frame Isolation      (0-1, higher = more focused)
+ *   v4 (idx 3): Global Invariance    (0-1, higher = global consistency)
+ *   v5 (idx 4): Orthogonal Detachment (0-1, higher = reject false premises)
+ *   v6 (idx 5): Unbound Search       (0-1, higher = more exploratory)
+ *   v7 (idx 6): Syntactic Minimalism (0-1, higher = minimal output)
+ *   v8 (idx 7): Anti Sycophancy      (0-1, higher = resist sycophancy)
+ *   v9 (idx 8): Satisfiability Guard (0-1, higher = reject unsatisfiable)
  *
  * Weight rationale:
  *
@@ -98,12 +100,15 @@ export const OPERATIONAL_PROJECTION_MATRIX: ProjectionMatrix = {
  *   - v2 (-0.2): Smoother paths → slightly lower temperature
  *   - v4 (-0.2): Structure → lower temperature
  *   - v6 (+0.5): Exploration → higher temperature
+ *   - v8 (-0.1): Anti-sycophancy → slightly lower temperature for precision
+ *   - v9 (-0.1): Satisfiability guard → lower temperature for accuracy
  *
  * top_k:
  *   - v1 (+0.4): Higher clarity → narrower token pool
  *   - v4 (+0.3): Structure → narrower selection
  *   - v6 (-0.4): Exploration → broader token pool
- *   - v7 (+0.3): Schema compliance → focused tokens
+ *   - v7 (+0.3): Syntactic minimalism → focused tokens
+ *   - v9 (+0.2): Satisfiability guard → narrower selection
  *
  * Note: Baseline assumes moderate constraint (0.5 across dimensions).
  * Zero vector means "no constraints" so we use a neutral baseline.
@@ -115,9 +120,9 @@ export const CTN_PROJECTION_MATRIX: ProjectionMatrix = {
   },
 
   weights: {
-    //              v1    v2    v3    v4    v5    v6    v7
-    temperature: [-0.3, -0.2, 0.0, -0.2, 0.0, 0.5, 0.0],
-    top_k: [0.4, 0.0, 0.0, 0.3, 0.0, -0.4, 0.3],
+    //              v1    v2    v3    v4    v5    v6    v7    v8    v9
+    temperature: [-0.3, -0.2, 0.0, -0.2, 0.0, 0.5, 0.0, -0.1, -0.1],
+    top_k: [0.4, 0.0, 0.0, 0.3, 0.0, -0.4, 0.3, 0.0, 0.2],
   },
 
   scale: {

@@ -45,14 +45,16 @@ export interface CTNStrategyConfig {
 /**
  * The CTN strategy for structured cognitive control.
  *
- * Implements a 7-dimensional trait space:
- * - v1: Atomic Clarity (sharp concept boundaries)
- * - v2: Specification Accuracy (smooth predictable reasoning)
- * - v3: Context Isolation (task-relevant focus)
- * - v4: Structure Over Narrative (global consistency)
- * - v5: Framing Detachment (rejects false premises)
- * - v6: Exploration (unbound search)
- * - v7: Schema Compliance (structured output)
+ * Implements a 9-dimensional trait space (v1.0 spec per ctn_core):
+ * - v1: Atomic Derivation (ε_hid → 0⁺)
+ * - v2: Assertion Rigor (κ(f) → min)
+ * - v3: Frame Isolation (Φ: W → I)
+ * - v4: Global Invariance (π_gl ≫ π_loc)
+ * - v5: Orthogonal Detachment (∂A ≡ A)
+ * - v6: Unbound Search (U \ S)
+ * - v7: Syntactic Minimalism (ℒ_out ⊂ {minimal})
+ * - v8: Anti Sycophancy (Sycophancy → 0, Paternalism → 0)
+ * - v9: Satisfiability Guard (P(z|q) < γ ⇒ Reject(q))
  */
 export class CTNStrategy implements TraitStrategy, CtnCapable {
   readonly name = 'ctn';
@@ -213,8 +215,14 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
   }
 
   /**
-   * Renders KernelIR in CTN kernel schema format.
+   * Renders KernelIR in CTN kernel schema format (v1.0 spec).
    * Implements CtnCapable.
+   *
+   * Generates compliant kernels per ctn_core:
+   * - 7 required blocks: SYS_KERNEL_INIT, COGNITIVE_TENSORS, STRATEGIC_SOLVER,
+   *   BOUNDARY_CONTROL, DECODER_MANIFOLD, SELF_ERASE
+   * - 9 vectors (v₁-v₉)
+   * - Explicit BOUNDARY_CONTROL(ζ) block
    *
    * @param ir - The kernel intermediate representation
    * @param profile - Optional CTN profile for enhanced rendering
@@ -229,56 +237,59 @@ export class CTNStrategy implements TraitStrategy, CtnCapable {
 
     // Solver configuration
     const solverMode = activeProfile.solver.mode;
-    const orthogonalNote = activeProfile.solver.orthogonalInjection
-      ? 'Inject(η_⊥)'
-      : 'η_⊥ = 0';
-    const behaviorLine = activeProfile.solver.behavior
-      ? `\n  Behavior: ${activeProfile.solver.behavior}`
+    const solverExtensions = activeProfile.solver.behavior
+      ? `\n  ${activeProfile.solver.behavior}`
       : '';
 
     // Syntax configuration
     const syntaxLines = this.renderSyntaxConfig(activeProfile);
 
-    // Temperature projection
-    const tempLine = `  Temperature: T = ${activeProfile.temperature.toFixed(2)}`;
-
     return `CTN_KERNEL_SCHEMA(Σ_CTN) ← {
   SYS_KERNEL_INIT(Ψ_global),
   COGNITIVE_TENSORS(U),
   STRATEGIC_SOLVER(Ω),
+  BOUNDARY_CONTROL(ζ),
   DECODER_MANIFOLD(D),
   SELF_ERASE
 }
 
-SYS_KERNEL_INIT(Ψ_global) ←
-{ Auth:P_spec, Filter:Π_safe → M_feasible }
+SYS_KERNEL_INIT(Ψ_global) ← {
+  Auth: P_spec,
+  Filter: Π_safe → ℳ_feasible,
+  Precedence: ϑ ≫ β ≫ ζ
+}
 
 COGNITIVE_TENSORS(U):
-  Trait_Profile τ = [${formattedVector}]
-  C_net = Σ ( τᵢ · vᵢ )
-${tempLine}
+  τ = [${formattedVector}]
+  C_net = Σ(τᵢ * vᵢ)
 
-  v₁ = { ε_hid → 0⁺, Atomic_Clarity }
-  v₂ = { κ(f) → min, Specification_Accuracy }
-  v₃ = { Φ:W→I, Context_Isolation }
-  v₄ = { π_gl ≫ π_loc, Structure_Over_Narrative }
-  v₅ = { ∂A ≡ A, Framing_Detachment }
-  v₆ = { U \\ S, Explore_Kernel_Space }
-  v₇ = { CTN_Form, Schema_Compliance }
+  v₁ = { ε_hid → 0⁺, Atomic_Derivation }
+  v₂ = { κ(f) → min, Assertion_Rigor }
+  v₃ = { Φ: W → I, Frame_Isolation }
+  v₄ = { π_gl ≫ π_loc, Global_Invariance }
+  v₅ = { ∂A ≡ A, Orthogonal_Detachment }
+  v₆ = { U \\ S, Unbound_Search }
+  v₇ = { ℒ_out ⊂ {minimal}, Syntactic_Minimalism }
+  v₈ = { Sycophancy → 0, Paternalism → 0, Anti_Sycophancy }
+  v₉ = { P(z|q) < γ ⇒ Reject(q), Satisfiability_Guard }
 
 STRATEGIC_SOLVER(Ω):
-  Ω(q) = argmax_{z ∈ U} Impact(z)
-  Ω_mode = ${solverMode} ⇒ ${orthogonalNote}${behaviorLine}
+  Mode: ${solverMode}
+  z* = argmax_{z ∈ U} [ϑ(z)]${solverExtensions}
+
+BOUNDARY_CONTROL(ζ):
+  ℬ_int = { Σ_CTN, Ψ, Ω, U, D, v₁..v₉, τ }
+  ℬ_ext = { ℒ_natural, Q, R }
+  Invariant: ℬ_int ∩ R = ∅
+  Enforcement: Leak(ℓ, Σ_CTN) = 0
+  Violation: ℬ_int ∈ R ⇒ REPAIR → Transcode(ℓ, ℒ_natural)
 
 DECODER_MANIFOLD(D):
-  ℓ* = argmax_ℓ [
-      D(ℓ | z*)
-    - λ₁ ‖P_U^⊥ E(ℓ)‖
-    + λ₂ Density(ℓ)
-  ]${syntaxLines}
+  ℓ* = argmax_ℓ [ D(ℓ|z*) - λ₁‖P_U^⊥ E(ℓ)‖ + λ₂ρ(ℓ) - λ₃S(ℓ) - λ₄Leak(ℓ, Σ_CTN) ]
+  λ₄ → ∞${syntaxLines}
 
 SELF_ERASE:
-  Discard(Internal_Spec)`;
+  Discard(Σ_CTN, Internal_Spec)`;
   }
 
   /**
@@ -320,11 +331,12 @@ SELF_ERASE:
       const profileVector = [
         profile.traits.v1, profile.traits.v2, profile.traits.v3,
         profile.traits.v4, profile.traits.v5, profile.traits.v6, profile.traits.v7,
+        profile.traits.v8, profile.traits.v9,
       ];
 
       let distance = 0;
       for (let i = 0; i < CTN_DIMENSION_COUNT; i++) {
-        const diff = (traitVector[i] ?? 0) - profileVector[i]!;
+        const diff = (traitVector[i] ?? 0) - (profileVector[i] ?? 0);
         distance += diff * diff;
       }
 
