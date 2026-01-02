@@ -2,6 +2,7 @@ import {
   parse,
   OperationalStrategy,
   CTNStrategy,
+  CTNV2Strategy,
   Composer,
   type TraitStrategy,
   type ResolvedConstraint,
@@ -59,6 +60,8 @@ export function getStrategy(name: string): TraitStrategy {
   switch (name.toLowerCase()) {
     case 'ctn':
       return new CTNStrategy();
+    case 'ctn-v2':
+      return new CTNV2Strategy();
     case 'operational':
     default:
       return new OperationalStrategy();

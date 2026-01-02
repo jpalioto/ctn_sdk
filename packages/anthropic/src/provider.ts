@@ -4,7 +4,7 @@ import type {
   MessageStreamEvent,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/messages';
-import { OperationalStrategy, CTNStrategy, type AbstractConstraint } from '@ctn/language';
+import { OperationalStrategy, CTNStrategy, CTNV2Strategy, type AbstractConstraint } from '@ctn/language';
 import {
   BaseCTNProvider,
   ProviderConnectionError,
@@ -78,6 +78,7 @@ export class AnthropicProvider extends BaseCTNProvider {
   readonly supportedStrategies: readonly StrategySupport[] = [
     { name: 'operational', versionRange: '1.x' },
     { name: 'ctn', versionRange: '1.x' },
+    { name: 'ctn-v2', versionRange: '2.x' },
   ];
 
   /**
@@ -125,6 +126,10 @@ export class AnthropicProvider extends BaseCTNProvider {
 
     const ctnStrategy = new CTNStrategy();
     this.registerProjection(ctnStrategy, CTN_PROJECTION_MATRIX);
+
+    // CTN V2 uses same projection matrix as CTN V1 (same dimensions)
+    const ctnV2Strategy = new CTNV2Strategy();
+    this.registerProjection(ctnV2Strategy, CTN_PROJECTION_MATRIX);
   }
 
   /**

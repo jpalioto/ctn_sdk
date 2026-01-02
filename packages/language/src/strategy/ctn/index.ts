@@ -1,5 +1,7 @@
 export { CTNStrategy } from './strategy.js';
 export type { CTNStrategyConfig } from './strategy.js';
+export { CTNV2Strategy } from './strategy-v2.js';
+export type { CTNV2StrategyConfig } from './strategy-v2.js';
 export { CTN_DIMENSIONS, CTN_DIMENSION_COUNT, CTN_DIMENSION_ID_TO_INDEX } from './dimensions.js';
 export { CTN_INTERACTIONS } from './interactions.js';
 
