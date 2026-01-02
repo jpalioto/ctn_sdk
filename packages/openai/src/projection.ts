@@ -58,3 +58,30 @@ export const CTN_PROJECTION_MATRIX: ProjectionMatrix = {
     top_p: [0.0, 1.0],
   },
 };
+
+/**
+ * Projection matrix for Null strategy on OpenAI models.
+ *
+ * No dimensions, no system prompt. Default API parameters.
+ */
+export const NULL_PROJECTION_MATRIX: ProjectionMatrix = {
+  baseline: {
+    temperature: 1.0,
+    top_p: 1.0,
+  },
+
+  weights: {
+    temperature: [],
+    top_p: [],
+  },
+
+  scale: {
+    temperature: 0.0,
+    top_p: 0.0,
+  },
+
+  clamps: {
+    temperature: [0.0, 2.0],
+    top_p: [0.0, 1.0],
+  },
+};

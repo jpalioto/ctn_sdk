@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { OperationalStrategy, CTNStrategy, CTNV2Strategy, type AbstractConstraint } from '@ctn/language';
+import { OperationalStrategy, CTNStrategy, CTNV2Strategy, NullStrategy, type AbstractConstraint } from '@ctn/language';
 import {
   BaseCTNProvider,
   ProviderConnectionError,
@@ -21,7 +21,7 @@ import {
   type Message,
 } from '@ctn/core';
 import { OPENAI_MODELS, resolveModelId, getModelConfig } from './models.js';
-import { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX } from './projection.js';
+import { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX, NULL_PROJECTION_MATRIX } from './projection.js';
 import { openaiRendererPreferences } from './renderer-preferences.js';
 
 /**
@@ -61,6 +61,7 @@ export class OpenAIProvider extends BaseCTNProvider {
     { name: 'operational', versionRange: '1.x' },
     { name: 'ctn', versionRange: '1.x' },
     { name: 'ctn-v2', versionRange: '2.x' },
+    { name: 'null', versionRange: '1.x' },
   ];
 
   /**
@@ -95,6 +96,10 @@ export class OpenAIProvider extends BaseCTNProvider {
     // CTN V2 uses same projection matrix as CTN V1 (same dimensions)
     const ctnV2Strategy = new CTNV2Strategy();
     this.registerProjection(ctnV2Strategy, CTN_PROJECTION_MATRIX);
+
+    // Null strategy - no system prompt, default API parameters
+    const nullStrategy = new NullStrategy();
+    this.registerProjection(nullStrategy, NULL_PROJECTION_MATRIX);
   }
 
   /**

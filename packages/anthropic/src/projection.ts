@@ -154,3 +154,34 @@ export const CTN_PROJECTION_MATRIX: ProjectionMatrix = {
  *   top_k: 50 + 25 * (0.4*0.6 + 0.3*0.5 - 0.4*0.9)
  *        = 50 + 25 * (0.24 + 0.15 - 0.36) = 50 + 0.75 = 50.75
  */
+
+/**
+ * Projection matrix for the Null strategy.
+ *
+ * The Null strategy has 0 dimensions and produces no system prompt.
+ * Used for baseline testing with default API parameters.
+ *
+ * Empty weights arrays - no trait-based parameter adjustment.
+ */
+export const NULL_PROJECTION_MATRIX: ProjectionMatrix = {
+  baseline: {
+    temperature: 1.0,  // Default temperature
+    top_k: 40,         // Default top_k
+  },
+
+  weights: {
+    // No dimensions = no weights
+    temperature: [],
+    top_k: [],
+  },
+
+  scale: {
+    temperature: 0.0,  // No adjustment
+    top_k: 0,          // No adjustment
+  },
+
+  clamps: {
+    temperature: [0.0, 1.0],
+    top_k: [1, 100],
+  },
+};

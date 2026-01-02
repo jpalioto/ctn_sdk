@@ -4,7 +4,7 @@ import type {
   MessageStreamEvent,
   MessageCreateParamsNonStreaming,
 } from '@anthropic-ai/sdk/resources/messages';
-import { OperationalStrategy, CTNStrategy, CTNV2Strategy, type AbstractConstraint } from '@ctn/language';
+import { OperationalStrategy, CTNStrategy, CTNV2Strategy, NullStrategy, type AbstractConstraint } from '@ctn/language';
 import {
   BaseCTNProvider,
   ProviderConnectionError,
@@ -26,7 +26,7 @@ import {
   type Message,
 } from '@ctn/core';
 import { getClaudeModels, resolveModelId, getModelConfig } from './models.js';
-import { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX } from './projection.js';
+import { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX, NULL_PROJECTION_MATRIX } from './projection.js';
 import { anthropicRendererPreferences } from './renderer-preferences.js';
 
 /**
@@ -79,6 +79,7 @@ export class AnthropicProvider extends BaseCTNProvider {
     { name: 'operational', versionRange: '1.x' },
     { name: 'ctn', versionRange: '1.x' },
     { name: 'ctn-v2', versionRange: '2.x' },
+    { name: 'null', versionRange: '1.x' },
   ];
 
   /**
@@ -130,6 +131,10 @@ export class AnthropicProvider extends BaseCTNProvider {
     // CTN V2 uses same projection matrix as CTN V1 (same dimensions)
     const ctnV2Strategy = new CTNV2Strategy();
     this.registerProjection(ctnV2Strategy, CTN_PROJECTION_MATRIX);
+
+    // Null strategy - no system prompt, default API parameters
+    const nullStrategy = new NullStrategy();
+    this.registerProjection(nullStrategy, NULL_PROJECTION_MATRIX);
   }
 
   /**
@@ -363,9 +368,13 @@ export class AnthropicProvider extends BaseCTNProvider {
     const requestParams: MessageCreateParamsNonStreaming = {
       model,
       max_tokens: maxTokens,
-      system,
       messages,
     };
+
+    // Only include system if non-empty (null strategy returns empty string)
+    if (system) {
+      requestParams.system = system;
+    }
 
     // Only add optional params if they are defined numbers
     // Note: Claude 4.5 doesn't support temperature + top_p together, so we only use temperature
@@ -396,10 +405,14 @@ export class AnthropicProvider extends BaseCTNProvider {
     const requestParams: Anthropic.MessageCreateParamsStreaming = {
       model,
       max_tokens: maxTokens,
-      system,
       messages,
       stream: true,
     };
+
+    // Only include system if non-empty (null strategy returns empty string)
+    if (system) {
+      requestParams.system = system;
+    }
 
     // Only add optional params if they are defined numbers
     // Note: Claude 4.5 doesn't support temperature + top_p together, so we only use temperature

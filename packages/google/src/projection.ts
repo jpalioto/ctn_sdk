@@ -61,3 +61,30 @@ export const CTN_PROJECTION_MATRIX: ProjectionMatrix = {
     top_k: [1, 100],
   },
 };
+
+/**
+ * Projection matrix for Null strategy on Google Gemini models.
+ *
+ * No dimensions, no system prompt. Default API parameters.
+ */
+export const NULL_PROJECTION_MATRIX: ProjectionMatrix = {
+  baseline: {
+    temperature: 1.0,
+    top_k: 40,
+  },
+
+  weights: {
+    temperature: [],
+    top_k: [],
+  },
+
+  scale: {
+    temperature: 0.0,
+    top_k: 0,
+  },
+
+  clamps: {
+    temperature: [0.0, 2.0],
+    top_k: [1, 100],
+  },
+};

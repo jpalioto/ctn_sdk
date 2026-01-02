@@ -24,3 +24,6 @@ export {
 
 // Re-export CTN strategy
 export * from './ctn/index.js';
+
+// Re-export Null strategy (no system prompt)
+export { NullStrategy } from './null/index.js';

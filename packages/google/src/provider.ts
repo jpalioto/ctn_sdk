@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import { OperationalStrategy, CTNStrategy, CTNV2Strategy, type AbstractConstraint } from '@ctn/language';
+import { OperationalStrategy, CTNStrategy, CTNV2Strategy, NullStrategy, type AbstractConstraint } from '@ctn/language';
 import {
   BaseCTNProvider,
   ProviderConnectionError,
@@ -21,7 +21,7 @@ import {
   type Message,
 } from '@ctn/core';
 import { GEMINI_MODELS, resolveModelId, getModelConfig } from './models.js';
-import { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX } from './projection.js';
+import { OPERATIONAL_PROJECTION_MATRIX, CTN_PROJECTION_MATRIX, NULL_PROJECTION_MATRIX } from './projection.js';
 import { geminiRendererPreferences } from './renderer-preferences.js';
 
 /**
@@ -61,6 +61,7 @@ export class GoogleProvider extends BaseCTNProvider {
     { name: 'operational', versionRange: '1.x' },
     { name: 'ctn', versionRange: '1.x' },
     { name: 'ctn-v2', versionRange: '2.x' },
+    { name: 'null', versionRange: '1.x' },
   ];
 
   /**
@@ -97,6 +98,10 @@ export class GoogleProvider extends BaseCTNProvider {
     // CTN V2 uses same projection matrix as CTN V1 (same dimensions)
     const ctnV2Strategy = new CTNV2Strategy();
     this.registerProjection(ctnV2Strategy, CTN_PROJECTION_MATRIX);
+
+    // Null strategy - no system prompt, default API parameters
+    const nullStrategy = new NullStrategy();
+    this.registerProjection(nullStrategy, NULL_PROJECTION_MATRIX);
   }
 
   /**
@@ -198,9 +203,12 @@ export class GoogleProvider extends BaseCTNProvider {
     try {
       // Build generation config without undefined values (exactOptionalPropertyTypes)
       const genConfig: Record<string, unknown> = {
-        systemInstruction: systemPrompt,
         maxOutputTokens: maxTokens,
       };
+      // Only include system instruction if non-empty (null strategy returns empty string)
+      if (systemPrompt) {
+        genConfig.systemInstruction = systemPrompt;
+      }
       if (typeof finalParams.temperature === 'number') {
         genConfig.temperature = finalParams.temperature;
       }
@@ -273,9 +281,12 @@ export class GoogleProvider extends BaseCTNProvider {
     try {
       // Build generation config without undefined values (exactOptionalPropertyTypes)
       const genConfig: Record<string, unknown> = {
-        systemInstruction: systemPrompt,
         maxOutputTokens: maxTokens,
       };
+      // Only include system instruction if non-empty (null strategy returns empty string)
+      if (systemPrompt) {
+        genConfig.systemInstruction = systemPrompt;
+      }
       if (typeof finalParams.temperature === 'number') {
         genConfig.temperature = finalParams.temperature;
       }

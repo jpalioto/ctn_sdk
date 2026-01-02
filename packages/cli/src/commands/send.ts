@@ -3,6 +3,7 @@ import {
   OperationalStrategy,
   CTNStrategy,
   CTNV2Strategy,
+  NullStrategy,
   Composer,
   type TraitStrategy,
   type ResolvedConstraint,
@@ -62,6 +63,10 @@ export function getStrategy(name: string): TraitStrategy {
       return new CTNStrategy();
     case 'ctn-v2':
       return new CTNV2Strategy();
+    case 'null':
+    case 'none':
+    case 'baseline':
+      return new NullStrategy();
     case 'operational':
     default:
       return new OperationalStrategy();
